@@ -8,13 +8,18 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-28">
           <div className="text-center max-w-3xl mx-auto">
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-gray-900 tracking-tight">
-              Bulk alt-text for{" "}
-              <span className="text-brand-600">accessibility audits</span>
+              Generate alt text for{" "}
+              <span className="text-brand-600">hundreds of images</span>{" "}
+              in minutes
             </h1>
             <p className="mt-6 text-lg md:text-xl text-gray-600 leading-relaxed">
-              Hundreds of images, done in minutes, WCAG-compliant. Upload a CSV
-              or paste a URL — AltForge generates proper alt text for every
-              image using AI.
+              AltForge uses AI to produce WCAG 2.1 AA-compliant alt text at
+              scale. Upload a CSV of image URLs or paste a website URL — review,
+              edit, and export results in one workflow. Cut your accessibility
+              audit time from days to minutes.
+            </p>
+            <p className="mt-4 text-sm text-gray-500">
+              Trusted by accessibility teams processing thousands of images
             </p>
             <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
               <Link
@@ -30,6 +35,9 @@ export default function LandingPage() {
                 View pricing
               </Link>
             </div>
+            <p className="mt-4 text-xs text-gray-400">
+              1 credit = 1 alt-text generation. Every new account starts with 25 free.
+            </p>
           </div>
         </div>
       </section>
@@ -38,24 +46,27 @@ export default function LandingPage() {
       <section className="bg-gray-50 py-16 md:py-20" aria-labelledby="features-heading">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 id="features-heading" className="text-2xl md:text-3xl font-bold text-center text-gray-900">
-            Built for accessibility teams
+            One workflow, zero busywork
           </h2>
+          <p className="mt-4 text-center text-gray-600 max-w-2xl mx-auto">
+            Stop writing alt text by hand. AltForge does the heavy lifting so you can focus on review.
+          </p>
           <div className="mt-12 grid gap-8 md:grid-cols-3">
             {[
               {
-                title: "CSV Upload",
+                title: "Bulk CSV Upload",
                 description:
-                  "Drop a CSV of image URLs and get alt text for every one. Batch processing that scales.",
+                  "Drop a CSV with hundreds of image URLs and AltForge generates alt text for every one. The whole batch processes in minutes, not days.",
               },
               {
                 title: "Website Crawl",
                 description:
-                  "Paste a URL and let AltForge find every image on the page — then generate alt text for all of them.",
+                  "Paste any URL and AltForge finds every image on the page — including ones missing alt attributes — then generates replacement text for all of them.",
               },
               {
-                title: "WCAG Compliant",
+                title: "WCAG 2.1 AA Compliant",
                 description:
-                  "Every alt-text suggestion is checked against WCAG 2.1 guidelines. Review, edit, and export.",
+                  "Every suggestion follows WCAG guidelines. Inline editing and one-click export to CSV or ready-to-paste HTML snippets make handoff seamless.",
               },
             ].map((feature) => (
               <div
@@ -74,24 +85,24 @@ export default function LandingPage() {
       <section className="bg-white py-16 md:py-20" aria-labelledby="audience-heading">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 id="audience-heading" className="text-2xl md:text-3xl font-bold text-center text-gray-900">
-            Who uses AltForge?
+            Built for teams that ship accessible content
           </h2>
           <div className="mt-12 grid gap-8 md:grid-cols-3">
             {[
               {
                 title: "Universities",
                 description:
-                  "Meet ADA compliance mandates across all your department websites and course materials.",
+                  "Facing ADA compliance deadlines across dozens of department sites? AltForge processes every image in bulk so your team can focus on the audit, not the typing.",
               },
               {
                 title: "E-Commerce",
                 description:
-                  "Product images need alt text — generate thousands at once and stay compliant.",
+                  "Product catalogs need alt text on every image. Generate thousands at once, review inline, and export production-ready HTML — all without slowing your release cycle.",
               },
               {
                 title: "Agencies",
                 description:
-                  "Deliver accessibility audits faster. AltForge cuts alt-text work from days to minutes.",
+                  "Deliver accessibility audits faster and more profitably. AltForge cuts alt-text work from days to minutes, letting you take on more clients without hiring.",
               },
             ].map((audience) => (
               <div
@@ -113,7 +124,7 @@ export default function LandingPage() {
             Ready to make your images accessible?
           </h2>
           <p className="mt-4 text-lg text-brand-100">
-            Start with 25 free credits. No credit card required.
+            Start with 25 free credits. No credit card required — no time limit.
           </p>
           <div className="mt-8">
             <Link

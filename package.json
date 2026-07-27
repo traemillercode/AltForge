@@ -1,0 +1,13 @@
+{
+  "name": "altforge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "install:all": "cd backend && bun install && cd ../frontend && bun install",
+    "build": "cd frontend && bun install && bun run build",
+    "start": "cd backend && bun install && NODE_ENV=production bun run src/index.ts",
+    "dev": "cd backend && bun run dev",
+    "dev:frontend": "cd frontend && bun run dev"
+  }
+}

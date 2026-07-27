@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { serveStatic } from "hono/bun";
 import { initDatabase } from "./db/index.js";
 import { authRoutes } from "./routes/auth.js";
 import { jobsRoutes } from "./routes/jobs.js";
@@ -61,6 +62,25 @@ app.get("/api/dashboard", async (c) => {
 
   return c.json({ user, jobCount: jobCount.count });
 });
+
+// In production, serve the built frontend
+const isProduction = process.env.NODE_ENV === "production";
+if (isProduction) {
+  const frontendDist = new URL("../../frontend/dist", import.meta.url).pathname;
+  
+  // Serve static assets (JS, CSS, images, etc.)
+  app.use("/assets/*", serveStatic({ root: frontendDist }));
+  app.use("/*.svg", serveStatic({ root: frontendDist }));
+  app.use("/*.ico", serveStatic({ root: frontendDist }));
+  
+  // For SPA routing, serve index.html for all non-API, non-asset routes
+  app.get("/*", serveStatic({ 
+    root: frontendDist,
+    rewriteRequestPath: () => "/index.html",
+  }));
+  
+  console.log(`📦 Serving frontend from ${frontendDist}`);
+}
 
 const port = parseInt(process.env.PORT || "3000");
 console.log(`🚀 AltForge API running on http://localhost:${port}`);

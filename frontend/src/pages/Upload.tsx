@@ -150,7 +150,7 @@ export default function UploadPage() {
   if (!user) return null;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
       <h1 className="text-2xl font-bold text-gray-900">Upload CSV</h1>
       <p className="mt-1 text-sm text-gray-600">
         Upload a CSV file with image URLs to generate alt-text.
@@ -161,11 +161,11 @@ export default function UploadPage() {
         <h2 id="upload-heading" className="sr-only">CSV File Upload</h2>
 
         {!uploadResult ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 md:p-8">
             {/* Drag-and-drop zone */}
             <div
               className={`
-                relative border-2 border-dashed rounded-lg p-12 text-center
+                relative border-2 border-dashed rounded-lg p-8 md:p-12 text-center
                 transition-colors duration-200
                 ${dragOver ? "border-brand-500 bg-brand-50" : "border-gray-300 hover:border-gray-400"}
                 ${selectedFile ? "bg-green-50 border-green-400" : ""}
@@ -191,7 +191,7 @@ export default function UploadPage() {
                   <svg className="mx-auto h-12 w-12 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <p className="mt-2 text-sm font-medium text-green-700">
+                  <p className="mt-2 text-sm font-medium text-green-700 break-all">
                     {selectedFile.name}
                   </p>
                   <p className="mt-1 text-xs text-green-600">
@@ -204,7 +204,7 @@ export default function UploadPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                   </svg>
                   <p className="mt-2 text-sm text-gray-600">
-                    <span className="font-medium text-brand-600">Click to upload</span> or drag and drop
+                    <span className="font-medium text-brand-600">Tap to browse</span> or drag and drop
                   </p>
                   <p className="mt-1 text-xs text-gray-500">
                     CSV files only (max 10MB, up to 5,000 URLs)
@@ -225,7 +225,7 @@ export default function UploadPage() {
             )}
 
             {/* Upload button */}
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-6 flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
               {selectedFile && (
                 <button
                   type="button"
@@ -239,7 +239,7 @@ export default function UploadPage() {
                 type="button"
                 onClick={handleUpload}
                 disabled={!selectedFile || uploading}
-                className="inline-flex items-center px-6 py-2.5 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-brand-500 focus-visible:outline-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="inline-flex items-center justify-center px-6 py-2.5 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-brand-500 focus-visible:outline-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 aria-busy={uploading}
               >
                 {uploading ? (
@@ -278,31 +278,31 @@ export default function UploadPage() {
 
             {/* URL list preview */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <div className="px-4 sm:px-6 py-4 border-b border-gray-200 bg-gray-50">
                 <h3 className="text-sm font-semibold text-gray-900">
                   Image URLs ({uploadResult.results.length})
                 </h3>
-                <p className="text-xs text-gray-600 mt-0.5">
+                <p className="text-xs text-gray-600 mt-0.5 break-all">
                   Source: {uploadResult.job.source_filename}
                 </p>
               </div>
-              <div className="max-h-80 overflow-y-auto">
-                <table className="min-w-full divide-y divide-gray-200">
+              <div className="max-h-80 overflow-y-auto table-responsive">
+                <table className="min-w-full divide-y divide-gray-200" aria-label="Preview of image URLs from CSV">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Image URL</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                      <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Image URL</th>
+                      <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {uploadResult.results.map((result: JobResult, idx: number) => (
                       <tr key={result.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-500">{idx + 1}</td>
-                        <td className="px-6 py-3 text-sm text-gray-900 max-w-md truncate" title={result.image_url}>
+                        <td className="px-4 sm:px-6 py-3 whitespace-nowrap text-sm text-gray-500">{idx + 1}</td>
+                        <td className="px-4 sm:px-6 py-3 text-sm text-gray-900 max-w-[200px] md:max-w-md truncate" title={result.image_url}>
                           {result.image_url}
                         </td>
-                        <td className="px-6 py-3 whitespace-nowrap">
+                        <td className="px-4 sm:px-6 py-3 whitespace-nowrap">
                           <StatusBadge status={result.status} />
                         </td>
                       </tr>
@@ -313,7 +313,7 @@ export default function UploadPage() {
             </div>
 
             {/* Action buttons */}
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col sm:flex-row sm:justify-between items-stretch sm:items-center gap-3">
               <button
                 type="button"
                 onClick={handleReset}
@@ -323,7 +323,7 @@ export default function UploadPage() {
               </button>
               <button
                 type="button"
-                className="inline-flex items-center px-6 py-2.5 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-brand-500 focus-visible:outline-offset-2"
+                className="inline-flex items-center justify-center px-6 py-2.5 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-brand-500 focus-visible:outline-offset-2"
                 onClick={() => navigate(`/jobs/${uploadResult.job.id}`)}
               >
                 View Job Details
@@ -331,7 +331,7 @@ export default function UploadPage() {
             </div>
 
             <p className="text-sm text-gray-500 text-center">
-              Processing will be available in the next update. Your URLs are queued and ready.
+              Click &ldquo;View Job Details&rdquo; to start processing with AI.
             </p>
           </div>
         )}
@@ -361,15 +361,15 @@ export default function UploadPage() {
             <p className="text-gray-600">No jobs yet. Upload a CSV to get started.</p>
           </div>
         ) : (
-          <div className="mt-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="mt-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden table-responsive">
             <table className="min-w-full divide-y divide-gray-200" aria-label="Job history">
               <thead className="bg-gray-50">
                 <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">File / URL</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Images</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                  <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">File</th>
+                  <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                  <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Images</th>
+                  <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -383,19 +383,19 @@ export default function UploadPage() {
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate(`/jobs/${job.id}`); } }}
                     aria-label={`Job from ${formatDate(job.created_at)}, ${job.total_images} images, status ${job.status}`}
                   >
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                       {formatDate(job.created_at)}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">
+                    <td className="px-4 sm:px-6 py-4 text-sm text-gray-900 max-w-[150px] sm:max-w-xs truncate">
                       {job.source_filename || job.source_url || "—"}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 uppercase">
+                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-600 uppercase">
                       {job.type}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {job.total_images}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
                       <StatusBadge status={job.status} />
                     </td>
                   </tr>

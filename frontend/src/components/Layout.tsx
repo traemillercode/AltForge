@@ -31,14 +31,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               AltForge
             </Link>
 
-            <nav aria-label="Main navigation">
+            <nav aria-label="Main navigation" className="flex items-center gap-4">
               {user ? (
-                <div className="flex items-center gap-4">
+                <>
                   <Link
-                    to="/pricing"
-                    className="text-sm text-gray-600 hover:text-gray-900 font-medium focus-visible:outline-2 focus-visible:outline-brand-500"
+                    to="/upload"
+                    className="text-sm text-gray-600 hover:text-gray-900 font-medium focus-visible:outline-2 focus-visible:outline-brand-500 hidden sm:inline"
                   >
-                    Pricing
+                    Upload
+                  </Link>
+                  <Link
+                    to="/dashboard"
+                    className="text-sm text-gray-600 hover:text-gray-900 font-medium focus-visible:outline-2 focus-visible:outline-brand-500 hidden sm:inline"
+                  >
+                    Dashboard
                   </Link>
                   <span className="text-sm text-gray-600 hidden sm:inline">
                     {user.email}
@@ -53,9 +59,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   >
                     Log out
                   </button>
-                </div>
+                </>
               ) : (
-                <div className="flex items-center gap-4">
+                <>
                   <Link
                     to="/pricing"
                     className="text-sm text-gray-600 hover:text-gray-900 font-medium focus-visible:outline-2 focus-visible:outline-brand-500"
@@ -74,7 +80,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   >
                     Sign up
                   </Link>
-                </div>
+                </>
               )}
             </nav>
           </div>
@@ -87,16 +93,35 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </main>
 
       {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 py-6" role="contentinfo">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm text-gray-500">
-          <p>AltForge — Making the web accessible, one image at a time.</p>
-          <p className="mt-1">
-            <Link
-              to="/terms"
-              className="underline hover:text-gray-700 focus-visible:outline-2 focus-visible:outline-brand-500"
-            >
-              Terms of Service
-            </Link>
+      <footer className="bg-white border-t border-gray-200 py-8" role="contentinfo">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p className="text-sm text-gray-500">
+              AltForge — Making the web accessible, one image at a time.
+            </p>
+            <nav aria-label="Footer navigation" className="flex items-center gap-6">
+              <Link
+                to="/pricing"
+                className="text-sm text-gray-500 hover:text-gray-700 focus-visible:outline-2 focus-visible:outline-brand-500"
+              >
+                Pricing
+              </Link>
+              <Link
+                to="/terms"
+                className="text-sm text-gray-500 hover:text-gray-700 focus-visible:outline-2 focus-visible:outline-brand-500"
+              >
+                Terms of Service
+              </Link>
+              <a
+                href="mailto:altforgeaccessibility@gmail.com"
+                className="text-sm text-gray-500 hover:text-gray-700 focus-visible:outline-2 focus-visible:outline-brand-500"
+              >
+                Contact
+              </a>
+            </nav>
+          </div>
+          <p className="mt-4 text-center text-xs text-gray-400">
+            &copy; {new Date().getFullYear()} AltForge. All rights reserved.
           </p>
         </div>
       </footer>

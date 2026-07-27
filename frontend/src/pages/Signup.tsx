@@ -58,6 +58,7 @@ export default function SignupPage() {
 
           {error && (
             <div
+              id="signup-form-error"
               className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm"
               role="alert"
             >
@@ -78,6 +79,8 @@ export default function SignupPage() {
                 type="email"
                 autoComplete="email"
                 required
+                aria-required="true"
+                aria-describedby={error ? "signup-form-error" : undefined}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 sm:text-sm"
@@ -98,6 +101,8 @@ export default function SignupPage() {
                 autoComplete="new-password"
                 required
                 minLength={8}
+                aria-required="true"
+                aria-describedby={error ? `signup-form-error password-hint` : "password-hint"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 sm:text-sm"
@@ -120,6 +125,8 @@ export default function SignupPage() {
                 type="password"
                 autoComplete="new-password"
                 required
+                aria-required="true"
+                aria-describedby={error ? "signup-form-error" : undefined}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 sm:text-sm"

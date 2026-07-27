@@ -27,7 +27,23 @@
   top: 0;
 }
 
-/* Accessible form styles — @tailwindcss/forms handles the base */
+/* Responsive table wrapper — enables horizontal scroll on narrow screens */
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-responsive table {
+  min-width: 600px;
+}
+
+/* Ensure form inputs are large enough on mobile (16px minimum prevents zoom) */
+@media (max-width: 640px) {
+  input, select, textarea, button[type="submit"] {
+    font-size: 16px !important;
+  }
+}
+
 @layer base {
   html {
     scroll-behavior: smooth;
