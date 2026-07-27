@@ -4,6 +4,7 @@ import type { Database } from "bun:sqlite";
 import Papa from "papaparse";
 import { authMiddleware } from "../middleware/auth.js";
 import { crawlSite } from "../crawler.js";
+import { generateAltText, requireApiKey } from "../ai.js";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_URLS = 5000;
@@ -274,6 +275,104 @@ export function jobsRoutes(db: Database): Hono {
     }, 201);
   });
 
+  // POST /api/jobs/:id/process — start AI alt-text processing
+  router.post("/:id/process", async (c) => {
+    const userId = getUserId(c);
+    const jobId = c.req.param("id");
+
+    // Validate OPENAI_API_KEY is set
+    let apiKey: string;
+    try {
+      apiKey = requireApiKey();
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 500);
+    }
+
+    // Load job and verify ownership + status
+    const job = db.query(
+      `SELECT id, user_id, type, status, total_images, processed_images,
+              source_url, source_filename, created_at, completed_at
+       FROM jobs WHERE id = ? AND user_id = ?`
+    ).get(jobId, userId) as Record<string, unknown> | undefined;
+
+    if (!job) {
+      return c.json({ error: "Job not found" }, 404);
+    }
+
+    if (job.status !== "pending") {
+      return c.json({
+        error: `Job cannot be processed. Current status: ${job.status}`,
+        status: job.status,
+      }, 409);
+    }
+
+    const totalImages = job.total_images as number;
+
+    // Check user credits
+    const user = db.query("SELECT credits FROM users WHERE id = ?")
+      .get(userId) as { credits: number } | undefined;
+
+    if (!user) {
+      return c.json({ error: "User not found" }, 404);
+    }
+
+    if (user.credits < totalImages) {
+      return c.json({
+        error: `Insufficient credits. You have ${user.credits} credits but need ${totalImages}.`,
+        creditsNeeded: totalImages - user.credits,
+        currentCredits: user.credits,
+      }, 402);
+    }
+
+    // Mark job as processing
+    db.run("UPDATE jobs SET status = 'processing' WHERE id = ?", [jobId]);
+
+    // Load results that need processing (status = 'needs_review')
+    const resultsToProcess = db.query(
+      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, created_at
+       FROM results WHERE job_id = ? AND status = 'needs_review'
+       ORDER BY created_at`
+    ).all(jobId) as Record<string, unknown>[];
+
+    // Start processing in the background (non-blocking)
+    processJobInBackground(db, jobId, userId, resultsToProcess, apiKey);
+
+    // Return the job in processing state immediately
+    const updatedJob = db.query(
+      `SELECT id, type, status, total_images, processed_images,
+              source_url, source_filename, created_at, completed_at
+       FROM jobs WHERE id = ?`
+    ).get(jobId) as Record<string, unknown>;
+
+    const allResults = db.query(
+      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, created_at
+       FROM results WHERE job_id = ? ORDER BY created_at`
+    ).all(jobId) as Record<string, unknown>[];
+
+    return c.json({ job: updatedJob, results: allResults });
+  });
+
+  // GET /api/jobs/:id/progress — lightweight polling endpoint
+  router.get("/:id/progress", (c) => {
+    const userId = getUserId(c);
+    const jobId = c.req.param("id");
+
+    const job = db.query(
+      `SELECT status, total_images, processed_images
+       FROM jobs WHERE id = ? AND user_id = ?`
+    ).get(jobId, userId) as Record<string, unknown> | undefined;
+
+    if (!job) {
+      return c.json({ error: "Job not found" }, 404);
+    }
+
+    return c.json({
+      status: job.status,
+      processed_images: job.processed_images,
+      total_images: job.total_images,
+    });
+  });
+
     // GET /api/jobs — list all jobs for the user
   router.get("/", (c) => {
     const userId = getUserId(c);
@@ -313,4 +412,101 @@ export function jobsRoutes(db: Database): Hono {
   });
 
   return router;
+}
+
+/**
+ * Process a job's images in the background using GPT-4o-mini.
+ * This runs asynchronously — the route handler returns immediately after kicking it off.
+ */
+async function processJobInBackground(
+  db: Database,
+  jobId: string,
+  userId: string,
+  results: Record<string, unknown>[],
+  apiKey: string
+): Promise<void> {
+  const updateResult = db.prepare(
+    `UPDATE results SET alt_text = ?, char_count = ?, status = ? WHERE id = ?`
+  );
+  const incrementProgress = db.prepare(
+    `UPDATE jobs SET processed_images = processed_images + 1 WHERE id = ?`
+  );
+  const deductCredit = db.prepare(
+    `UPDATE users SET credits = credits - 1 WHERE id = ? AND credits > 0`
+  );
+
+  try {
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      if (!result) continue;
+      const resultId = result.id as string;
+      const imageUrl = result.image_url as string;
+      const contextText = result.context_text as string | null;
+
+      // Check if user still has credits before processing
+      const user = db.query("SELECT credits FROM users WHERE id = ?")
+        .get(userId) as { credits: number } | undefined;
+
+      if (!user || user.credits < 1) {
+        // Pause the job — not enough credits
+        db.run("UPDATE jobs SET status = 'pending' WHERE id = ?", [jobId]);
+        console.log(`[process] Job ${jobId} paused — user out of credits after ${i} images`);
+        return;
+      }
+
+      // Deduct credit atomically (in transaction)
+      const deductTx = db.transaction(() => {
+        deductCredit.run(userId);
+        incrementProgress.run(jobId);
+      });
+
+      try {
+        deductTx();
+
+        // Process the image with GPT-4o-mini
+        const generated = await generateAltText(imageUrl, contextText, apiKey);
+
+        // Update the result
+        updateResult.run(
+          generated.status === "decorative" ? "" : generated.altText,
+          generated.charCount,
+          generated.status,
+          resultId
+        );
+
+        console.log(
+          `[process] Job ${jobId}: ${i + 1}/${results.length} — ${generated.status} (${generated.charCount} chars)`
+        );
+      } catch (processingErr) {
+        // Individual image processing failed — mark as needs_review, don't refund
+        console.error(
+          `[process] Job ${jobId}: failed to process image ${imageUrl}:`,
+          processingErr instanceof Error ? processingErr.message : processingErr
+        );
+        // Leave the result as needs_review — user can manually add alt text
+        // Credit already deducted, no refund
+      }
+
+      // Small delay between API calls to avoid rate limits
+      if (i < results.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+    }
+
+    // All done — mark job as completed
+    db.run(
+      `UPDATE jobs SET status = 'completed', completed_at = ? WHERE id = ?`,
+      [new Date().toISOString(), jobId]
+    );
+    console.log(`[process] Job ${jobId}: completed — ${results.length} images processed`);
+  } catch (err) {
+    console.error(
+      `[process] Job ${jobId}: fatal error:`,
+      err instanceof Error ? err.message : err
+    );
+    db.run(
+      `UPDATE jobs SET status = 'failed' WHERE id = ?`,
+      [jobId]
+    );
+  }
 }
