@@ -429,7 +429,7 @@ export default function JobDetailPage() {
   const canExport = isCompleted || (isProcessing && results.some((r) => r.status !== "needs_review"));
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
       {/* Back link */}
       <button
         onClick={() => navigate("/upload")}
@@ -444,8 +444,8 @@ export default function JobDetailPage() {
       <h1 className="text-2xl font-bold text-gray-900">Job Details</h1>
 
       {/* Job info */}
-      <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
+        <div className="grid gap-4 grid-cols-2 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <p className="text-sm font-medium text-gray-600">Status</p>
             <p className="mt-1"><StatusBadge status={job.status} /></p>
@@ -469,7 +469,7 @@ export default function JobDetailPage() {
 
       {/* Action: Start Processing */}
       {isPending && (
-        <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Ready to Process</h2>
@@ -490,7 +490,7 @@ export default function JobDetailPage() {
                     <button
                       onClick={() => setShowConfirm(true)}
                       disabled={processing}
-                      className="inline-flex items-center px-6 py-3 text-sm font-semibold text-white bg-brand-600 rounded-lg hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-brand-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      className="inline-flex items-center justify-center w-full sm:w-auto px-6 py-3 text-sm font-semibold text-white bg-brand-600 rounded-lg hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-brand-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       aria-label={`Start processing ${job.total_images} images`}
                     >
                       {processing ? (
@@ -507,7 +507,7 @@ export default function JobDetailPage() {
                       <button
                         onClick={handleStartProcessing}
                         disabled={processing}
-                        className="inline-flex items-center px-6 py-3 text-sm font-semibold text-white bg-brand-600 rounded-lg hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-brand-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="inline-flex items-center justify-center px-6 py-3 text-sm font-semibold text-white bg-brand-600 rounded-lg hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-brand-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
                         {processing ? (
                           <>
@@ -521,7 +521,7 @@ export default function JobDetailPage() {
                       <button
                         onClick={() => setShowConfirm(false)}
                         disabled={processing}
-                        className="inline-flex items-center px-4 py-3 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 focus-visible:outline-2 focus-visible:outline-gray-400 disabled:opacity-50 transition-colors"
+                        className="inline-flex items-center justify-center px-4 py-3 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 focus-visible:outline-2 focus-visible:outline-gray-400 disabled:opacity-50 transition-colors"
                       >
                         Cancel
                       </button>
@@ -534,13 +534,13 @@ export default function JobDetailPage() {
                   )}
                 </>
               ) : (
-                <div className="text-right">
+                <div className="text-center sm:text-right">
                   <p className="text-sm font-medium text-red-600">
                     Need {creditsShortfall} more credit{creditsShortfall !== 1 ? "s" : ""}
                   </p>
                   <button
                     disabled
-                    className="mt-1 inline-flex items-center px-6 py-3 text-sm font-semibold text-gray-400 bg-gray-100 rounded-lg cursor-not-allowed"
+                    className="mt-1 inline-flex items-center justify-center w-full sm:w-auto px-6 py-3 text-sm font-semibold text-gray-400 bg-gray-100 rounded-lg cursor-not-allowed"
                     aria-disabled="true"
                   >
                     Start Processing
@@ -595,7 +595,7 @@ export default function JobDetailPage() {
 
       {/* Progress bar */}
       {(isProcessing || isCompleted || isFailed) && (
-        <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
           <div className="flex justify-between items-baseline">
             <h2 className="text-lg font-semibold text-gray-900">Progress</h2>
             <span className="text-sm text-gray-600">
@@ -613,7 +613,7 @@ export default function JobDetailPage() {
 
       {/* Results table */}
       <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between flex-wrap gap-2">
+        <div className="px-4 sm:px-6 py-4 border-b border-gray-200 bg-gray-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <h2 className="text-sm font-semibold text-gray-900">
             Images ({results.length})
           </h2>
@@ -669,15 +669,15 @@ export default function JobDetailPage() {
             )}
           </div>
         </div>
-        <div className="max-h-[32rem] overflow-y-auto">
+        <div className="max-h-[32rem] overflow-y-auto table-responsive">
           <table className="min-w-full divide-y divide-gray-200" aria-label="Image results with alt text">
             <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
                 <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-10">#</th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Image URL</th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Alt Text</th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Chars</th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">Status</th>
+                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">Image URL</th>
+                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[160px]">Alt Text</th>
+                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">Chars</th>
+                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">Status</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
