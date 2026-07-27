@@ -411,6 +411,97 @@ export function jobsRoutes(db: Database): Hono {
     return c.json({ job, results });
   });
 
+  // PUT /api/jobs/:jobId/results/:resultId — update a result's alt text
+  router.put("/:jobId/results/:resultId", async (c) => {
+    const userId = getUserId(c);
+    const jobId = c.req.param("jobId");
+    const resultId = c.req.param("resultId");
+
+    // Verify job ownership
+    const job = db.query(
+      `SELECT id FROM jobs WHERE id = ? AND user_id = ?`
+    ).get(jobId, userId) as Record<string, unknown> | undefined;
+
+    if (!job) {
+      return c.json({ error: "Job not found" }, 404);
+    }
+
+    // Verify result belongs to job
+    const result = db.query(
+      `SELECT id, job_id FROM results WHERE id = ? AND job_id = ?`
+    ).get(resultId, jobId) as Record<string, unknown> | undefined;
+
+    if (!result) {
+      return c.json({ error: "Result not found" }, 404);
+    }
+
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body.alt_text !== "string") {
+      return c.json({ error: "alt_text is required" }, 400);
+    }
+
+    const altText = body.alt_text;
+    const charCount = altText.length;
+
+    // Determine compliance status
+    let status: string;
+    if (altText === "") {
+      status = "decorative";
+    } else if (charCount <= 125) {
+      status = "compliant";
+    } else if (charCount <= 250) {
+      status = "compliant"; // long but still compliant
+    } else {
+      status = "needs_review";
+    }
+
+    db.run(
+      `UPDATE results SET alt_text = ?, char_count = ?, status = ? WHERE id = ?`,
+      [altText, charCount, status, resultId]
+    );
+
+    return c.json({
+      id: resultId,
+      alt_text: altText,
+      char_count: charCount,
+      status,
+    });
+  });
+
+  // GET /api/jobs/:id/export — export results as CSV or HTML
+  router.get("/:id/export", (c) => {
+    const userId = getUserId(c);
+    const jobId = c.req.param("id");
+    const format = c.req.query("format") || "csv";
+
+    // Verify job ownership
+    const job = db.query(
+      `SELECT id, type, status, source_url, source_filename, created_at
+       FROM jobs WHERE id = ? AND user_id = ?`
+    ).get(jobId, userId) as Record<string, unknown> | undefined;
+
+    if (!job) {
+      return c.json({ error: "Job not found" }, 404);
+    }
+
+    // Load results
+    const results = db.query(
+      `SELECT id, job_id, image_url, alt_text, char_count, status
+       FROM results WHERE job_id = ? ORDER BY created_at`
+    ).all(jobId) as Record<string, unknown>[];
+
+    const jobType = job.type as string;
+    const dateStr = new Date().toISOString().split("T")[0];
+    const filename = `altforge-export-${jobType}-${dateStr}`;
+
+    if (format === "html") {
+      return exportHtml(results, filename);
+    }
+
+    // Default: CSV
+    return exportCsv(results, filename);
+  });
+
   return router;
 }
 
@@ -509,4 +600,89 @@ async function processJobInBackground(
       [jobId]
     );
   }
+}
+
+/**
+ * Escape a CSV field: wrap in double quotes if it contains commas, quotes, or newlines.
+ */
+function escapeCsvField(value: string): string {
+  if (value.includes(",") || value.includes('"') || value.includes("\n") || value.includes("\r")) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+/**
+ * Generate a CSV file and return it as a download response.
+ */
+function exportCsv(results: Record<string, unknown>[], filename: string): Response {
+  const header = "image_url,alt_text,char_count,status";
+  const rows = results.map((r) => {
+    const url = escapeCsvField((r.image_url as string) || "");
+    const alt = escapeCsvField((r.alt_text as string) || "");
+    const chars = String(r.char_count ?? 0);
+    const status = escapeCsvField((r.status as string) || "");
+    return `${url},${alt},${chars},${status}`;
+  });
+  const csv = [header, ...rows].join("\n") + "\n";
+
+  return new Response(csv, {
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${filename}.csv"`,
+    },
+  });
+}
+
+/**
+ * Escape a string for safe inclusion in an HTML attribute value.
+ */
+function escapeHtmlAttr(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/**
+ * Generate an HTML file with ready-to-paste <img> snippets and return as download.
+ */
+function exportHtml(results: Record<string, unknown>[], filename: string): Response {
+  const now = new Date().toISOString();
+  const compliant = results.filter((r) => r.status === "compliant").length;
+  const decorative = results.filter((r) => r.status === "decorative").length;
+  const needsReview = results.filter((r) => r.status === "needs_review").length;
+
+  const imgTags = results.map((r) => {
+    const src = escapeHtmlAttr((r.image_url as string) || "");
+    const alt = escapeHtmlAttr((r.alt_text as string) || "");
+    return `  <img src="${src}" alt="${alt}" />`;
+  }).join("\n");
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AltForge Export</title>
+</head>
+<body>
+<!--
+  AltForge alt-text export
+  Generated: ${now}
+  Total images: ${results.length}
+  Compliant: ${compliant} | Decorative: ${decorative} | Needs review: ${needsReview}
+-->
+${imgTags}
+</body>
+</html>
+`;
+
+  return new Response(html, {
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${filename}.html"`,
+    },
+  });
 }

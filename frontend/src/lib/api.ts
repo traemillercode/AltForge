@@ -156,4 +156,25 @@ export const api = {
     });
     return handleResponse<JobProgress>(res);
   },
+
+  async updateResult(
+    jobId: string,
+    resultId: string,
+    altText: string
+  ): Promise<{ id: string; alt_text: string; char_count: number; status: string }> {
+    const res = await fetch(
+      `${API_BASE}/jobs/${encodeURIComponent(jobId)}/results/${encodeURIComponent(resultId)}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ alt_text: altText }),
+      }
+    );
+    return handleResponse<{ id: string; alt_text: string; char_count: number; status: string }>(res);
+  },
+
+  getExportUrl(jobId: string, format: "csv" | "html"): string {
+    return `${API_BASE}/jobs/${encodeURIComponent(jobId)}/export?format=${format}`;
+  },
 };
