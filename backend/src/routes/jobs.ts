@@ -3,6 +3,7 @@ import type { Context } from "hono";
 import type { Database } from "bun:sqlite";
 import Papa from "papaparse";
 import { authMiddleware } from "../middleware/auth.js";
+import { crawlSite } from "../crawler.js";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_URLS = 5000;
@@ -171,9 +172,109 @@ export function jobsRoutes(db: Database): Hono {
         costEstimate: validUrls.length,
       },
     }, 201);
+    });
+
+  // POST /api/jobs/crawl — crawl a website for images
+  router.post("/crawl", async (c) => {
+    const userId = getUserId(c);
+
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body.url !== "string" || !body.url.trim()) {
+      return c.json({ error: "A valid URL is required" }, 400);
+    }
+
+    const url = body.url.trim();
+
+    // Validate URL format
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        return c.json({ error: "URL must use http or https protocol" }, 400);
+      }
+    } catch {
+      return c.json({ error: "Invalid URL format" }, 400);
+    }
+
+    // Run the crawl
+    const crawlResult = await crawlSite(url);
+
+    // If the URL was disallowed or completely failed
+    if (crawlResult.errors.length > 0 && crawlResult.images.length === 0) {
+      const disallowedErr = crawlResult.errors.find((e) => e.includes("disallowed"));
+      if (disallowedErr) {
+        return c.json({ error: disallowedErr }, 403);
+      }
+    }
+
+    // Check limits
+    if (crawlResult.stats.imagesFound > 1000 && crawlResult.stats.imagesAdded === 0 && crawlResult.stats.imagesSkipped > 1000) {
+      return c.json({
+        error: "Too many images found on the site. The 1,000 image maximum was exceeded before finding any images needing alt text. Try crawling a more specific URL.",
+      }, 400);
+    }
+
+    // Create job
+    const jobId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    db.run(
+      `INSERT INTO jobs (id, user_id, type, status, total_images, source_url, created_at)
+       VALUES (?, ?, 'crawl', 'pending', ?, ?, ?)`,
+      [jobId, userId, crawlResult.stats.imagesAdded, url, now]
+    );
+
+    // Create results rows for images that need alt text
+    if (crawlResult.images.length > 0) {
+      const insertResult = db.prepare(
+        `INSERT INTO results (id, job_id, image_url, status, alt_text, context_text, created_at)
+         VALUES (?, ?, ?, 'needs_review', ?, ?, ?)`
+      );
+
+      const insertResults = db.transaction(() => {
+        for (const img of crawlResult.images) {
+          insertResult.run(
+            crypto.randomUUID(),
+            jobId,
+            img.url,
+            img.altText,
+            img.contextText,
+            now
+          );
+        }
+      });
+
+      insertResults();
+    }
+
+    // Fetch created job with results
+    const job = db.query(
+      `SELECT id, user_id, type, status, total_images, processed_images,
+              source_url, source_filename, created_at, completed_at
+       FROM jobs WHERE id = ?`
+    ).get(jobId) as Record<string, unknown> | undefined;
+
+    const results = db.query(
+      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, created_at
+       FROM results WHERE job_id = ? ORDER BY created_at`
+    ).all(jobId) as Record<string, unknown>[];
+
+    return c.json({
+      job: { ...job, user_id: undefined },
+      results,
+      stats: {
+        pagesFound: crawlResult.stats.pagesFound,
+        pagesCrawled: crawlResult.stats.pagesCrawled,
+        pagesFailed: crawlResult.stats.pagesFailed,
+        imagesFound: crawlResult.stats.imagesFound,
+        imagesSkipped: crawlResult.stats.imagesSkipped,
+        imagesAdded: crawlResult.stats.imagesAdded,
+        costEstimate: crawlResult.stats.imagesAdded,
+        errors: crawlResult.errors.slice(0, 10),
+      },
+    }, 201);
   });
 
-  // GET /api/jobs — list all jobs for the user
+    // GET /api/jobs — list all jobs for the user
   router.get("/", (c) => {
     const userId = getUserId(c);
 
