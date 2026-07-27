@@ -6,6 +6,8 @@ import LandingPage from "./pages/Landing";
 import LoginPage from "./pages/Login";
 import SignupPage from "./pages/Signup";
 import DashboardPage from "./pages/Dashboard";
+import UploadPage from "./pages/Upload";
+import JobDetailPage from "./pages/JobDetail";
 
 export default function App() {
   return (
@@ -20,6 +22,22 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/upload"
+            element={
+              <ProtectedRoute>
+                <UploadPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/jobs/:id"
+            element={
+              <ProtectedRoute>
+                <JobDetailPage />
               </ProtectedRoute>
             }
           />
