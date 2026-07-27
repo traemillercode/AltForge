@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { initDatabase } from "./db/index.js";
 import { authRoutes } from "./routes/auth.js";
 import { jobsRoutes } from "./routes/jobs.js";
+import { creditsRoutes } from "./routes/credits.js";
 
 const app = new Hono();
 
@@ -26,6 +27,9 @@ app.route("/api/auth", authRoutes(db));
 
 // Job routes (all protected)
 app.route("/api/jobs", jobsRoutes(db));
+
+// Credit routes (auth required)
+app.route("/api/credits", creditsRoutes(db));
 
 // Protected dashboard endpoint
 app.get("/api/dashboard", async (c) => {

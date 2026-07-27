@@ -8,6 +8,8 @@ import SignupPage from "./pages/Signup";
 import DashboardPage from "./pages/Dashboard";
 import UploadPage from "./pages/Upload";
 import JobDetailPage from "./pages/JobDetail";
+import PricingPage from "./pages/Pricing";
+import TermsPage from "./pages/Terms";
 
 export default function App() {
   return (
@@ -17,6 +19,8 @@ export default function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
+          <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/terms" element={<TermsPage />} />
           <Route
             path="/dashboard"
             element={

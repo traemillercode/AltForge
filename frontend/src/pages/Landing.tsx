@@ -24,10 +24,10 @@ export default function LandingPage() {
                 Start free — 25 credits, no card required
               </Link>
               <Link
-                to="/login"
+                to="/pricing"
                 className="inline-flex items-center justify-center px-8 py-4 border border-gray-300 text-lg font-semibold rounded-lg shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-brand-500 focus-visible:outline-offset-2 transition-colors"
               >
-                Log in
+                View pricing
               </Link>
             </div>
           </div>
