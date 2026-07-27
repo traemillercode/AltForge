@@ -70,6 +70,17 @@ export interface CsvUploadResponse {
   };
 }
 
+export interface JobProgress {
+  status: string;
+  processed_images: number;
+  total_images: number;
+}
+
+export interface ProcessJobResponse {
+  job: Job;
+  results: JobResult[];
+}
+
 export const api = {
   async signup(email: string, password: string): Promise<{ user: User }> {
     const res = await fetch(`${API_BASE}/auth/signup`, {
@@ -129,5 +140,20 @@ export const api = {
       credentials: "include",
     });
     return handleResponse<{ job: Job; results: JobResult[] }>(res);
+  },
+
+  async processJob(id: string): Promise<ProcessJobResponse> {
+    const res = await fetch(`${API_BASE}/jobs/${encodeURIComponent(id)}/process`, {
+      method: "POST",
+      credentials: "include",
+    });
+    return handleResponse<ProcessJobResponse>(res);
+  },
+
+  async getJobProgress(id: string): Promise<JobProgress> {
+    const res = await fetch(`${API_BASE}/jobs/${encodeURIComponent(id)}/progress`, {
+      credentials: "include",
+    });
+    return handleResponse<JobProgress>(res);
   },
 };
