@@ -34,6 +34,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <nav aria-label="Main navigation">
               {user ? (
                 <div className="flex items-center gap-4">
+                  <Link
+                    to="/pricing"
+                    className="text-sm text-gray-600 hover:text-gray-900 font-medium focus-visible:outline-2 focus-visible:outline-brand-500"
+                  >
+                    Pricing
+                  </Link>
                   <span className="text-sm text-gray-600 hidden sm:inline">
                     {user.email}
                   </span>
@@ -50,6 +56,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 </div>
               ) : (
                 <div className="flex items-center gap-4">
+                  <Link
+                    to="/pricing"
+                    className="text-sm text-gray-600 hover:text-gray-900 font-medium focus-visible:outline-2 focus-visible:outline-brand-500"
+                  >
+                    Pricing
+                  </Link>
                   <Link
                     to="/login"
                     className="text-sm text-gray-600 hover:text-gray-900 font-medium focus-visible:outline-2 focus-visible:outline-brand-500"
@@ -78,6 +90,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <footer className="bg-white border-t border-gray-200 py-6" role="contentinfo">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm text-gray-500">
           <p>AltForge — Making the web accessible, one image at a time.</p>
+          <p className="mt-1">
+            <Link
+              to="/terms"
+              className="underline hover:text-gray-700 focus-visible:outline-2 focus-visible:outline-brand-500"
+            >
+              Terms of Service
+            </Link>
+          </p>
         </div>
       </footer>
     </div>
