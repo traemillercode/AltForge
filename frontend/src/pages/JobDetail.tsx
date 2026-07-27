@@ -1,7 +1,61 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/useAuth";
 import { api, type Job, type JobResult, type JobProgress, ApiClientError } from "../lib/api";
+
+function getComplianceStatus(altText: string): "decorative" | "compliant" | "compliant-long" | "needs_review" {
+  if (altText === "") return "decorative";
+  const chars = altText.length;
+  if (chars > 250) return "needs_review";
+  if (chars > 125) return "compliant-long";
+  return "compliant";
+}
+
+function ComplianceBadge({ status }: { status: string }) {
+  const badges = {
+    compliant: {
+      label: "Compliant",
+      bg: "bg-green-100",
+      text: "text-green-800",
+      border: "border-green-200",
+    },
+    "compliant-long": {
+      label: "Compliant (long)",
+      bg: "bg-amber-100",
+      text: "text-amber-800",
+      border: "border-amber-200",
+    },
+    needs_review: {
+      label: "Needs Review",
+      bg: "bg-red-100",
+      text: "text-red-800",
+      border: "border-red-200",
+    },
+    decorative: {
+      label: "Decorative",
+      bg: "bg-gray-100",
+      text: "text-gray-600",
+      border: "border-gray-200",
+    },
+    processing: {
+      label: "Processing",
+      bg: "bg-blue-100",
+      text: "text-blue-800",
+      border: "border-blue-200",
+    },
+  } as const;
+
+  const cfg = badges[status as keyof typeof badges] ?? badges.needs_review;
+
+  return (
+    <span
+      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${cfg.bg} ${cfg.text} ${cfg.border}`}
+      role="status"
+    >
+      {cfg.label}
+    </span>
+  );
+}
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
@@ -9,9 +63,6 @@ function StatusBadge({ status }: { status: string }) {
     processing: "bg-blue-100 text-blue-800 border-blue-200",
     completed: "bg-green-100 text-green-800 border-green-200",
     failed: "bg-red-100 text-red-800 border-red-200",
-    needs_review: "bg-yellow-100 text-yellow-800 border-yellow-200",
-    compliant: "bg-green-100 text-green-800 border-green-200",
-    decorative: "bg-gray-100 text-gray-600 border-gray-200",
   };
   return (
     <span
@@ -33,6 +84,160 @@ function formatDate(dateStr: string): string {
   });
 }
 
+interface EditableAltCellProps {
+  result: JobResult;
+  jobId: string;
+  onSaved: (updated: { id: string; alt_text: string; char_count: number; status: string }) => void;
+}
+
+function EditableAltCell({ result, jobId, onSaved }: EditableAltCellProps) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(result.alt_text ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const currentStatus = editing
+    ? getComplianceStatus(value)
+    : getComplianceStatus(result.alt_text ?? "");
+
+  // Show saved confirmation briefly then fade
+  useEffect(() => {
+    if (saved) {
+      const t = setTimeout(() => setSaved(false), 2000);
+      return () => clearTimeout(t);
+    }
+  }, [saved]);
+
+  // Focus input when entering edit mode
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [editing]);
+
+  const handleSave = useCallback(async () => {
+    if (saving) return;
+    // If unchanged, just cancel
+    if (value === (result.alt_text ?? "")) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      const updated = await api.updateResult(jobId, result.id, value);
+      setEditing(false);
+      setSaved(true);
+      onSaved(updated);
+    } catch {
+      // Revert on error
+      setValue(result.alt_text ?? "");
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  }, [value, result, jobId, saving, onSaved]);
+
+  const handleCancel = useCallback(() => {
+    setValue(result.alt_text ?? "");
+    setEditing(false);
+  }, [result.alt_text]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleSave();
+      } else if (e.key === "Escape") {
+        handleCancel();
+      }
+    },
+    [handleSave, handleCancel]
+  );
+
+  if (editing) {
+    return (
+      <div className="flex flex-col gap-1">
+        <textarea
+          ref={inputRef}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={handleSave}
+          onKeyDown={handleKeyDown}
+          disabled={saving}
+          rows={3}
+          className="w-full min-w-[16rem] px-2 py-1 text-sm border border-brand-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 resize-y"
+          aria-label="Edit alt text"
+        />
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs text-gray-500">{value.length} chars</span>
+          <div className="flex gap-1">
+            <button
+              onMouseDown={(e) => { e.preventDefault(); handleSave(); }}
+              disabled={saving}
+              className="px-2 py-0.5 text-xs font-medium text-white bg-brand-600 rounded hover:bg-brand-700 disabled:opacity-50"
+              aria-label="Save alt text"
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+            <button
+              onMouseDown={(e) => { e.preventDefault(); handleCancel(); }}
+              disabled={saving}
+              className="px-2 py-0.5 text-xs font-medium text-gray-700 bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50"
+              aria-label="Cancel editing"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Display mode
+  if (result.status === "needs_review" && !result.alt_text && result.alt_text !== "") {
+    return (
+      <button
+        onClick={() => { setValue(""); setEditing(true); }}
+        className="text-left text-gray-400 italic hover:text-gray-600 focus-visible:outline-2 focus-visible:outline-brand-500 cursor-text w-full"
+        aria-label="Click to add alt text"
+      >
+        Waiting…
+      </button>
+    );
+  }
+
+  if (currentStatus === "decorative" || result.status === "decorative") {
+    return (
+      <button
+        onClick={() => { setValue(result.alt_text ?? ""); setEditing(true); }}
+        className="text-left text-gray-500 italic hover:text-gray-700 focus-visible:outline-2 focus-visible:outline-brand-500 cursor-text w-full"
+        aria-label="Click to edit alt text"
+      >
+        (decorative — no alt text needed)
+      </button>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => { setValue(result.alt_text ?? ""); setEditing(true); }}
+        className="text-left text-gray-900 hover:text-brand-700 focus-visible:outline-2 focus-visible:outline-brand-500 cursor-text w-full break-words"
+        title="Click to edit"
+        aria-label={`Click to edit alt text: ${result.alt_text}`}
+      >
+        {result.alt_text}
+      </button>
+      {saved && (
+        <span className="absolute -top-4 right-0 text-xs text-green-600 font-medium animate-pulse">
+          ✓ Saved
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function JobDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -45,7 +250,9 @@ export default function JobDetailPage() {
   const [processing, setProcessing] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [processError, setProcessError] = useState<string | null>(null);
+  const [showExportMenu, setShowExportMenu] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -63,6 +270,19 @@ export default function JobDetailPage() {
     return () => stopPolling();
   }, [job?.status]);
 
+  // Close export menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false);
+      }
+    }
+    if (showExportMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [showExportMenu]);
+
   function startPolling() {
     if (pollingRef.current) return;
     pollingRef.current = setInterval(async () => {
@@ -78,10 +298,9 @@ export default function JobDetailPage() {
               }
             : prev
         );
-        // If processing completed (or failed), do a full reload
         if (progress.status === "completed" || progress.status === "failed") {
           stopPolling();
-          await refreshUser(); // refresh credits
+          await refreshUser();
           loadJob(id);
         }
       } catch {
@@ -128,7 +347,6 @@ export default function JobDetailPage() {
       const data = await api.processJob(id);
       setJob(data.job);
       setResults(data.results);
-      // Polling will start via the useEffect when status changes to 'processing'
     } catch (err) {
       if (err instanceof ApiClientError) {
         setProcessError(err.message);
@@ -140,6 +358,28 @@ export default function JobDetailPage() {
     }
   }
 
+  function handleResultSaved(updated: { id: string; alt_text: string; char_count: number; status: string }) {
+    setResults((prev) =>
+      prev.map((r) =>
+        r.id === updated.id
+          ? {
+              ...r,
+              alt_text: updated.alt_text,
+              char_count: updated.char_count,
+              status: updated.status as JobResult["status"],
+            }
+          : r
+      )
+    );
+  }
+
+  function handleExport(format: "csv" | "html") {
+    if (!id) return;
+    setShowExportMenu(false);
+    // Trigger download by navigating to the export URL
+    window.open(api.getExportUrl(id, format), "_blank");
+  }
+
   const creditsNeeded = job ? job.total_images : 0;
   const hasEnoughCredits = user ? user.credits >= creditsNeeded : false;
   const creditsShortfall = hasEnoughCredits ? 0 : creditsNeeded - (user?.credits ?? 0);
@@ -147,6 +387,11 @@ export default function JobDetailPage() {
   const isProcessing = job?.status === "processing";
   const isCompleted = job?.status === "completed";
   const isFailed = job?.status === "failed";
+
+  // Compute compliance summary
+  const compliantCount = results.filter((r) => r.status === "compliant").length;
+  const decorativeCount = results.filter((r) => r.status === "decorative").length;
+  const needsReviewCount = results.filter((r) => r.status === "needs_review").length;
 
   if (!user) return null;
 
@@ -180,6 +425,8 @@ export default function JobDetailPage() {
   }
 
   if (!job) return null;
+
+  const canExport = isCompleted || (isProcessing && results.some((r) => r.status !== "needs_review"));
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -366,17 +613,61 @@ export default function JobDetailPage() {
 
       {/* Results table */}
       <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between flex-wrap gap-2">
           <h2 className="text-sm font-semibold text-gray-900">
             Images ({results.length})
           </h2>
-          {(isCompleted || isProcessing) && (
-            <span className="text-xs text-gray-500">
-              {results.filter((r) => r.status === "compliant").length} compliant /{" "}
-              {results.filter((r) => r.status === "decorative").length} decorative /{" "}
-              {results.filter((r) => r.status === "needs_review").length} needs review
-            </span>
-          )}
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Compliance summary */}
+            {(isCompleted || isProcessing) && (
+              <span className="text-xs text-gray-500">
+                {compliantCount} compliant · {decorativeCount} decorative · {needsReviewCount} need review
+              </span>
+            )}
+            {/* Export button */}
+            {canExport && (
+              <div className="relative" ref={exportMenuRef}>
+                <button
+                  onClick={() => setShowExportMenu(!showExportMenu)}
+                  className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-brand-700 bg-brand-50 border border-brand-200 rounded-md hover:bg-brand-100 focus-visible:outline-2 focus-visible:outline-brand-500 transition-colors"
+                  aria-expanded={showExportMenu}
+                  aria-haspopup="true"
+                >
+                  <svg className="mr-1 h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Export
+                  <svg className="ml-1 h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {showExportMenu && (
+                  <div className="absolute right-0 mt-1 w-36 bg-white border border-gray-200 rounded-md shadow-lg z-20 py-1" role="menu">
+                    <button
+                      onClick={() => handleExport("csv")}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                      role="menuitem"
+                    >
+                      <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      CSV
+                    </button>
+                    <button
+                      onClick={() => handleExport("html")}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                      role="menuitem"
+                    >
+                      <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                      </svg>
+                      HTML
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
         <div className="max-h-[32rem] overflow-y-auto">
           <table className="min-w-full divide-y divide-gray-200" aria-label="Image results with alt text">
@@ -386,42 +677,49 @@ export default function JobDetailPage() {
                 <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Image URL</th>
                 <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Alt Text</th>
                 <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Chars</th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">Status</th>
+                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">Status</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {results.map((result, idx) => (
-                <tr key={result.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{idx + 1}</td>
-                  <td className="px-4 py-3 text-sm text-gray-900 max-w-xs truncate" title={result.image_url}>
-                    <a
-                      href={result.image_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-brand-600 hover:text-brand-800 hover:underline focus-visible:outline-2 focus-visible:outline-brand-500"
-                    >
-                      {result.image_url}
-                    </a>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-900 max-w-md">
-                    {result.status === "needs_review" && !result.alt_text ? (
-                      <span className="text-gray-400 italic">Waiting…</span>
-                    ) : result.status === "decorative" ? (
-                      <span className="text-gray-500 italic">(decorative — no alt text needed)</span>
-                    ) : (
-                      <span title={result.alt_text ?? ""}>
-                        {result.alt_text}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                    {result.char_count > 0 ? result.char_count : "—"}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <StatusBadge status={result.status} />
-                  </td>
-                </tr>
-              ))}
+              {results.map((result, idx) => {
+                const displayStatus = result.status === "compliant"
+                  ? getComplianceStatus(result.alt_text ?? "")
+                  : result.status;
+                const charCount = result.alt_text ? result.alt_text.length : result.char_count;
+
+                return (
+                  <tr key={result.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{idx + 1}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900 max-w-xs truncate" title={result.image_url}>
+                      <a
+                        href={result.image_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-brand-600 hover:text-brand-800 hover:underline focus-visible:outline-2 focus-visible:outline-brand-500"
+                      >
+                        {result.image_url}
+                      </a>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900 max-w-md">
+                      <EditableAltCell
+                        result={result}
+                        jobId={id!}
+                        onSaved={handleResultSaved}
+                      />
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                      {charCount > 0 ? charCount : "—"}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {result.status === "needs_review" && !result.alt_text && result.alt_text !== "" ? (
+                        <span className="text-gray-400 text-xs italic">Processing</span>
+                      ) : (
+                        <ComplianceBadge status={displayStatus} />
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
