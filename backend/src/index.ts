@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { initDatabase } from "./db/index.js";
 import { authRoutes } from "./routes/auth.js";
+import { jobsRoutes } from "./routes/jobs.js";
 
 const app = new Hono();
 
@@ -22,6 +23,9 @@ app.get("/api/health", (c) => c.json({ status: "ok", timestamp: new Date().toISO
 
 // Auth routes
 app.route("/api/auth", authRoutes(db));
+
+// Job routes (all protected)
+app.route("/api/jobs", jobsRoutes(db));
 
 // Protected dashboard endpoint
 app.get("/api/dashboard", async (c) => {
@@ -46,7 +50,12 @@ app.get("/api/dashboard", async (c) => {
     return c.json({ error: "User not found" }, 404);
   }
 
-  return c.json({ user });
+  // Count user's jobs for dashboard
+  const jobCount = db.query(
+    "SELECT COUNT(*) as count FROM jobs WHERE user_id = ?"
+  ).get(userId) as { count: number };
+
+  return c.json({ user, jobCount: jobCount.count });
 });
 
 const port = parseInt(process.env.PORT || "3000");

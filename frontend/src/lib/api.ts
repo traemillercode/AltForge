@@ -30,6 +30,46 @@ export interface User {
   credits: number;
 }
 
+// Job types
+export type JobType = "csv" | "crawl";
+export type JobStatus = "pending" | "processing" | "completed" | "failed";
+
+export interface Job {
+  id: string;
+  type: JobType;
+  status: JobStatus;
+  total_images: number;
+  processed_images: number;
+  source_url: string | null;
+  source_filename: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export type ResultStatus = "compliant" | "needs_review" | "decorative";
+
+export interface JobResult {
+  id: string;
+  job_id: string;
+  image_url: string;
+  alt_text: string | null;
+  char_count: number;
+  status: ResultStatus;
+  context_text: string | null;
+  created_at: string;
+}
+
+export interface CsvUploadResponse {
+  job: Job;
+  results: JobResult[];
+  stats: {
+    validUrls: number;
+    invalidCount: number;
+    totalRows: number;
+    costEstimate: number;
+  };
+}
+
 export const api = {
   async signup(email: string, password: string): Promise<{ user: User }> {
     const res = await fetch(`${API_BASE}/auth/signup`, {
@@ -63,5 +103,31 @@ export const api = {
       method: "POST",
       credentials: "include",
     });
+  },
+
+  // Job endpoints
+  async uploadCsv(file: File): Promise<CsvUploadResponse> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`${API_BASE}/jobs/csv`, {
+      method: "POST",
+      credentials: "include",
+      body: formData,
+    });
+    return handleResponse<CsvUploadResponse>(res);
+  },
+
+  async getJobs(): Promise<{ jobs: Job[] }> {
+    const res = await fetch(`${API_BASE}/jobs`, {
+      credentials: "include",
+    });
+    return handleResponse<{ jobs: Job[] }>(res);
+  },
+
+  async getJob(id: string): Promise<{ job: Job; results: JobResult[] }> {
+    const res = await fetch(`${API_BASE}/jobs/${encodeURIComponent(id)}`, {
+      credentials: "include",
+    });
+    return handleResponse<{ job: Job; results: JobResult[] }>(res);
   },
 };
