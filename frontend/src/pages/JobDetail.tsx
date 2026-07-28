@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/useAuth";
 import { api, type Job, type JobResult, type JobProgress, type SkippedResult, ApiClientError } from "../lib/api";
+import GenerationProgress, { type GenerationProgressState } from "../components/GenerationProgress";
 
 function getComplianceStatus(altText: string): "decorative" | "compliant" | "compliant-long" | "needs_review" {
   if (altText === "") return "decorative";
@@ -430,6 +431,9 @@ export default function JobDetailPage() {
   const [selectedSkippedIds, setSelectedSkippedIds] = useState<Set<number>>(new Set());
   const [batchGenerating, setBatchGenerating] = useState(false);
 
+  // Generation progress modal state
+  const [genProgress, setGenProgress] = useState<GenerationProgressState | null>(null);
+
   useEffect(() => {
     if (!id) return;
     loadJob(id);
@@ -610,7 +614,18 @@ export default function JobDetailPage() {
 
   async function handleGenerateSkipped(skipId: number) {
     if (!id || generatingSkippedId) return;
+    const skipEntry = skipped.find((s) => s.id === skipId);
     setGeneratingSkippedId(skipId);
+
+    // Show progress modal for single image
+    setGenProgress({
+      isGenerating: true,
+      current: 0,
+      total: 1,
+      currentImageUrl: skipEntry?.image_url ?? "",
+      errors: [],
+    });
+
     try {
       const newResult = await api.generateSkipped(id, skipId);
       // Add the new result to the results list
@@ -639,12 +654,29 @@ export default function JobDetailPage() {
         return next;
       });
       await refreshUser();
+
+      // Update progress to complete
+      setGenProgress((prev) =>
+        prev
+          ? { ...prev, current: 1, isGenerating: false }
+          : null
+      );
     } catch (err) {
-      if (err instanceof ApiClientError) {
-        alert(err.message);
-      } else {
-        alert("Generation failed. Please try again.");
-      }
+      const errorMsg =
+        err instanceof ApiClientError
+          ? err.message
+          : "Generation failed. Please try again.";
+
+      setGenProgress((prev) =>
+        prev
+          ? {
+              ...prev,
+              current: 1,
+              isGenerating: false,
+              errors: [...prev.errors, errorMsg],
+            }
+          : null
+      );
     } finally {
       setGeneratingSkippedId(null);
     }
@@ -685,31 +717,90 @@ export default function JobDetailPage() {
   async function handleBatchGenerate() {
     if (!id || batchGenerating || selectedSkippedIds.size === 0) return;
     setBatchGenerating(true);
-    try {
-      const idsArray = Array.from(selectedSkippedIds);
-      const result = await api.batchGenerateSkipped(id, idsArray);
-      let message = `Generated alt text for ${result.generated} image${result.generated !== 1 ? "s" : ""}.`;
-      if (result.errors.length > 0) {
-        message += `\n\n${result.errors.length} error${result.errors.length !== 1 ? "s" : ""}:`;
-        for (const err of result.errors) {
-          message += `\n• ${err}`;
-        }
+
+    const idsArray = Array.from(selectedSkippedIds);
+    const errors: string[] = [];
+    let generated = 0;
+
+    // Show progress modal
+    setGenProgress({
+      isGenerating: true,
+      current: 0,
+      total: idsArray.length,
+      currentImageUrl: skipped.find((s) => s.id === idsArray[0])?.image_url ?? "",
+      errors: [],
+    });
+
+    // Process one at a time from the frontend for real-time progress
+    let index = 0;
+    for (const skipId of idsArray) {
+      const skipEntry = skipped.find((s) => s.id === skipId);
+
+      // Update progress with current image thumbnail
+      setGenProgress((prev) =>
+        prev
+          ? {
+              ...prev,
+              currentImageUrl: skipEntry?.image_url ?? "",
+            }
+          : null
+      );
+
+      try {
+        const newResult = await api.generateSkipped(id, skipId);
+        // Add the new result to the results list
+        setResults((prev) => [
+          ...prev,
+          {
+            id: newResult.id,
+            job_id: newResult.job_id,
+            image_url: newResult.image_url,
+            alt_text: newResult.alt_text,
+            char_count: newResult.char_count,
+            status: newResult.status as JobResult["status"],
+            context_text: null,
+            source_page_url: newResult.source_page_url,
+            file_size: null,
+            created_at: new Date().toISOString(),
+          },
+        ]);
+        // Remove from skipped list
+        setSkipped((prev) => {
+          const next = prev.filter((s) => s.id !== skipId);
+          if (next.length === 0 && skippedPage > 1 && id) {
+            loadSkipped(id, skippedPage - 1);
+          }
+          return next;
+        });
+        generated++;
+      } catch (err) {
+        const errorMsg =
+          err instanceof ApiClientError
+            ? err.message
+            : `Image #${skipId}: generation failed`;
+        errors.push(errorMsg);
       }
-      alert(message);
-      // Clear selection
-      setSelectedSkippedIds(new Set());
-      // Refresh data
-      await refreshUser();
-      await loadJob(id);
-    } catch (err) {
-      if (err instanceof ApiClientError) {
-        alert(err.message);
-      } else {
-        alert("Batch generation failed. Please try again.");
-      }
-    } finally {
-      setBatchGenerating(false);
+
+      index++;
+      // Update progress after each image
+      setGenProgress((prev) =>
+        prev
+          ? { ...prev, current: index, errors: [...errors] }
+          : null
+      );
     }
+
+    // Mark as complete
+    setGenProgress((prev) =>
+      prev ? { ...prev, isGenerating: false } : null
+    );
+
+    await refreshUser();
+    // Clear selection
+    setSelectedSkippedIds(new Set());
+    // Refresh data
+    await loadJob(id);
+    setBatchGenerating(false);
   }
 
   function handleExportSkippedCsv() {
@@ -1331,6 +1422,15 @@ export default function JobDetailPage() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Generation Progress Modal */}
+      {genProgress && (
+        <GenerationProgress
+          progress={genProgress}
+          creditsRemaining={user?.credits ?? 0}
+          onDismiss={() => setGenProgress(null)}
+        />
       )}
     </div>
   );
