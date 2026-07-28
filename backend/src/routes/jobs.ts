@@ -268,6 +268,28 @@ export function jobsRoutes(db: Database): Hono {
       insertResults();
     }
 
+    // Store skipped images
+    if (crawlResult.stats.skippedImages.length > 0) {
+      const insertSkipped = db.prepare(
+        `INSERT INTO skipped_results (job_id, image_url, source_page_url, existing_alt_text, created_at)
+         VALUES (?, ?, ?, ?, ?)`
+      );
+
+      const insertAllSkipped = db.transaction(() => {
+        for (const skipped of crawlResult.stats.skippedImages) {
+          insertSkipped.run(
+            jobId,
+            skipped.url,
+            skipped.sourcePageUrl,
+            skipped.altText,
+            now
+          );
+        }
+      });
+
+      insertAllSkipped();
+    }
+
     // Fetch created job with results
     const job = db.query(
       `SELECT id, user_id, type, status, total_images, processed_images,
@@ -757,6 +779,145 @@ export function jobsRoutes(db: Database): Hono {
       alt_text: altText,
       char_count: charCount,
       status,
+    });
+  });
+
+  // GET /api/jobs/:id/skipped — get skipped images for a crawl job
+  router.get("/:id/skipped", (c) => {
+    const userId = getUserId(c);
+    const jobId = c.req.param("id");
+
+    // Verify job ownership
+    const job = db.query(
+      `SELECT id, type FROM jobs WHERE id = ? AND user_id = ?`
+    ).get(jobId, userId) as Record<string, unknown> | undefined;
+
+    if (!job) {
+      return c.json({ error: "Job not found" }, 404);
+    }
+
+    if (job.type !== "crawl") {
+      return c.json({ skipped: [] });
+    }
+
+    const skipped = db.query(
+      `SELECT id, job_id, image_url, source_page_url, existing_alt_text, created_at
+       FROM skipped_results WHERE job_id = ? ORDER BY id`
+    ).all(jobId) as Record<string, unknown>[];
+
+    // Map to camelCase for frontend
+    const mapped = skipped.map((s) => ({
+      id: s.id,
+      job_id: s.job_id,
+      image_url: s.image_url,
+      source_page_url: s.source_page_url,
+      existing_alt_text: s.existing_alt_text,
+      created_at: s.created_at,
+    }));
+
+    return c.json({ skipped: mapped });
+  });
+
+  // POST /api/jobs/:id/skipped/:skippedId/generate — generate alt text for a skipped image
+  router.post("/:id/skipped/:skippedId/generate", async (c) => {
+    const userId = getUserId(c);
+    const jobId = c.req.param("id");
+    const skippedIdStr = c.req.param("skippedId");
+    const skippedId = parseInt(skippedIdStr, 10);
+
+    if (isNaN(skippedId)) {
+      return c.json({ error: "Invalid skipped image ID" }, 400);
+    }
+
+    // Verify job ownership
+    const job = db.query(
+      `SELECT id, type FROM jobs WHERE id = ? AND user_id = ?`
+    ).get(jobId, userId) as Record<string, unknown> | undefined;
+
+    if (!job) {
+      return c.json({ error: "Job not found" }, 404);
+    }
+
+    // Load the skipped result and verify it belongs to the job
+    const skipped = db.query(
+      `SELECT id, job_id, image_url, existing_alt_text, source_page_url
+       FROM skipped_results WHERE id = ? AND job_id = ?`
+    ).get(skippedId, jobId) as Record<string, unknown> | undefined;
+
+    if (!skipped) {
+      return c.json({ error: "Skipped image not found" }, 404);
+    }
+
+    // Check user credits
+    const user = db.query("SELECT credits FROM users WHERE id = ?")
+      .get(userId) as { credits: number } | undefined;
+
+    if (!user) {
+      return c.json({ error: "User not found" }, 404);
+    }
+
+    if (user.credits < 1) {
+      return c.json({ error: "Insufficient credits. You need at least 1 credit to generate alt text." }, 402);
+    }
+
+    // Get API key
+    let apiKey: string;
+    try {
+      apiKey = requireApiKey();
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 500);
+    }
+
+    // Deduct 1 credit
+    db.run("UPDATE users SET credits = credits - 1 WHERE id = ? AND credits > 0", [userId]);
+
+    // Call AI generation
+    let altText: string;
+    let status: string;
+    let charCount: number;
+
+    try {
+      const generated = await generateAltText(
+        skipped.image_url as string,
+        null,
+        apiKey
+      );
+      altText = generated.altText;
+      status = generated.status;
+      charCount = generated.charCount;
+    } catch (err) {
+      // Refund the credit on AI failure
+      db.run("UPDATE users SET credits = credits + 1 WHERE id = ?", [userId]);
+      return c.json({
+        error: `AI generation failed: ${err instanceof Error ? err.message : "Unknown error"}`,
+      }, 502);
+    }
+
+    // Insert a new result row and delete the skipped row in a transaction
+    const now = new Date().toISOString();
+    const newResultId = crypto.randomUUID();
+    const skippedImageUrl = skipped.image_url as string;
+    const skippedSourcePageUrl = skipped.source_page_url as string | null;
+
+    const moveToResults = db.transaction(() => {
+      db.run(
+        `INSERT INTO results (id, job_id, image_url, alt_text, char_count, status, source_page_url, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [newResultId, jobId, skippedImageUrl, altText, charCount, status, skippedSourcePageUrl, now]
+      );
+      db.run("DELETE FROM skipped_results WHERE id = ?", [skippedId]);
+    });
+
+    moveToResults();
+
+    return c.json({
+      id: newResultId,
+      job_id: jobId,
+      image_url: skipped.image_url,
+      alt_text: altText,
+      char_count: charCount,
+      status,
+      source_page_url: skipped.source_page_url,
     });
   });
 

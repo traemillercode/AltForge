@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/useAuth";
-import { api, type Job, type JobResult, type JobProgress, ApiClientError } from "../lib/api";
+import { api, type Job, type JobResult, type JobProgress, type SkippedResult, ApiClientError } from "../lib/api";
 
 function getComplianceStatus(altText: string): "decorative" | "compliant" | "compliant-long" | "needs_review" {
   if (altText === "") return "decorative";
@@ -255,6 +255,119 @@ function EditableAltCell({ result, jobId, onSaved }: EditableAltCellProps) {
   );
 }
 
+interface SkippedRowProps {
+  skipped: SkippedResult;
+  index: number;
+  isGenerating: boolean;
+  isCopied: boolean;
+  anyGenerating: boolean;
+  onCopy: (altText: string | null, skipId: number) => void;
+  onGenerate: (skipId: number) => void;
+}
+
+function SkippedRow({ skipped, index, isGenerating, isCopied, anyGenerating, onCopy, onGenerate }: SkippedRowProps) {
+  const [expandedAlt, setExpandedAlt] = useState(false);
+  const altText = skipped.existing_alt_text ?? "";
+  const isLong = altText.length > 100;
+  const displayAlt = expandedAlt || !isLong ? altText : altText.slice(0, 100) + "…";
+
+  return (
+    <tr className="hover:bg-gray-50">
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{index + 1}</td>
+      <td className="px-4 py-3 text-sm text-gray-900 max-w-xs">
+        {skipped.source_page_url ? (
+          <a
+            href={skipped.source_page_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-brand-600 hover:text-brand-800 hover:underline focus-visible:outline-2 focus-visible:outline-brand-500 truncate block"
+          >
+            {skipped.source_page_url}
+          </a>
+        ) : (
+          <span className="text-gray-400">—</span>
+        )}
+      </td>
+      <td className="px-4 py-3 text-sm text-gray-900 max-w-xs">
+        <a
+          href={skipped.image_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-brand-600 hover:text-brand-800 hover:underline focus-visible:outline-2 focus-visible:outline-brand-500 truncate block"
+        >
+          {skipped.image_url}
+        </a>
+      </td>
+      <td className="px-4 py-3 text-sm text-gray-900 max-w-md">
+        {altText ? (
+          <div className="flex items-start gap-1">
+            <span className="break-words flex-1">{displayAlt}</span>
+            {isLong && (
+              <button
+                onClick={() => setExpandedAlt(!expandedAlt)}
+                className="flex-shrink-0 text-xs text-brand-600 hover:text-brand-800 underline focus-visible:outline-2 focus-visible:outline-brand-500 mt-0.5"
+                aria-label={expandedAlt ? "Show less" : "Show more"}
+                aria-expanded={expandedAlt}
+              >
+                {expandedAlt ? "Show less" : "Show more"}
+              </button>
+            )}
+          </div>
+        ) : (
+          <span className="text-gray-400 italic">(empty alt)</span>
+        )}
+      </td>
+      <td className="px-4 py-3 whitespace-nowrap">
+        <div className="flex items-center gap-1.5">
+          {altText && (
+            <button
+              onClick={() => onCopy(altText, skipped.id)}
+              className="inline-flex items-center px-2 py-1 text-xs font-medium text-gray-600 bg-gray-100 border border-gray-200 rounded hover:bg-gray-200 focus-visible:outline-2 focus-visible:outline-brand-500 transition-colors"
+              aria-label={`Copy alt text for image ${index + 1}`}
+              title="Copy alt text to clipboard"
+            >
+              {isCopied ? (
+                <>
+                  <svg className="h-3 w-3 mr-0.5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Copied!
+                </>
+              ) : (
+                <>
+                  <svg className="h-3 w-3 mr-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  Copy
+                </>
+              )}
+            </button>
+          )}
+          {!isGenerating ? (
+            <button
+              onClick={() => onGenerate(skipped.id)}
+              disabled={anyGenerating}
+              className="inline-flex items-center px-2 py-1 text-xs font-medium text-brand-700 bg-brand-50 border border-brand-200 rounded hover:bg-brand-100 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-brand-500 transition-colors"
+              title="Generate AI alt text (costs 1 credit)"
+              aria-label={`Generate alt text for image ${index + 1}`}
+            >
+              <svg className="h-3 w-3 mr-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              Generate
+            </button>
+          ) : (
+            <span className="inline-flex items-center text-xs text-gray-500" role="status">
+              <div className="w-3 h-3 border-2 border-brand-200 border-t-brand-600 rounded-full animate-spin mr-1" aria-hidden="true" />
+              Generating…
+            </span>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 export default function JobDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -270,6 +383,13 @@ export default function JobDetailPage() {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
+
+  // Skipped images state
+  const [skipped, setSkipped] = useState<SkippedResult[]>([]);
+  const [skippedLoading, setSkippedLoading] = useState(false);
+  const [showSkipped, setShowSkipped] = useState(false);
+  const [generatingSkippedId, setGeneratingSkippedId] = useState<number | null>(null);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -340,6 +460,11 @@ export default function JobDetailPage() {
       const data = await api.getJob(jobId);
       setJob(data.job);
       setResults(data.results);
+
+      // Load skipped images for crawl jobs
+      if (data.job.type === "crawl") {
+        loadSkipped(jobId);
+      }
     } catch (err) {
       if (err instanceof ApiClientError) {
         if (err.status === 404) {
@@ -352,6 +477,19 @@ export default function JobDetailPage() {
       }
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadSkipped(jobId: string) {
+    try {
+      setSkippedLoading(true);
+      const data = await api.getSkippedResults(jobId);
+      setSkipped(data.skipped);
+    } catch {
+      // Silently fail — skipped images are non-critical
+      setSkipped([]);
+    } finally {
+      setSkippedLoading(false);
     }
   }
 
@@ -407,6 +545,58 @@ export default function JobDetailPage() {
       }
     } finally {
       setRegeneratingId(null);
+    }
+  }
+
+  async function handleCopySkipped(altText: string | null, skipId: number) {
+    try {
+      await navigator.clipboard.writeText(altText ?? "");
+      setCopiedId(skipId);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      // Clipboard API may not be available
+      const textArea = document.createElement("textarea");
+      textArea.value = altText ?? "";
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+      setCopiedId(skipId);
+      setTimeout(() => setCopiedId(null), 2000);
+    }
+  }
+
+  async function handleGenerateSkipped(skipId: number) {
+    if (!id || generatingSkippedId) return;
+    setGeneratingSkippedId(skipId);
+    try {
+      const newResult = await api.generateSkipped(id, skipId);
+      // Add the new result to the results list
+      setResults((prev) => [
+        ...prev,
+        {
+          id: newResult.id,
+          job_id: newResult.job_id,
+          image_url: newResult.image_url,
+          alt_text: newResult.alt_text,
+          char_count: newResult.char_count,
+          status: newResult.status as JobResult["status"],
+          context_text: null,
+          source_page_url: newResult.source_page_url,
+          created_at: new Date().toISOString(),
+        },
+      ]);
+      // Remove from skipped list
+      setSkipped((prev) => prev.filter((s) => s.id !== skipId));
+      await refreshUser();
+    } catch (err) {
+      if (err instanceof ApiClientError) {
+        alert(err.message);
+      } else {
+        alert("Generation failed. Please try again.");
+      }
+    } finally {
+      setGeneratingSkippedId(null);
     }
   }
 
@@ -797,6 +987,71 @@ export default function JobDetailPage() {
           </table>
         </div>
       </div>
+
+      {/* Skipped Images Section (crawl jobs only) */}
+      {job.type === "crawl" && (
+        <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <button
+            onClick={() => setShowSkipped(!showSkipped)}
+            className="w-full px-4 sm:px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between hover:bg-gray-100 transition-colors focus-visible:outline-2 focus-visible:outline-brand-500"
+            aria-expanded={showSkipped}
+            aria-controls="skipped-images-panel"
+          >
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-gray-900">
+                Skipped Images ({skipped.length})
+              </h2>
+              {skippedLoading && (
+                <div className="w-3.5 h-3.5 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" aria-hidden="true" />
+              )}
+            </div>
+            <svg
+              className={`h-4 w-4 text-gray-500 transition-transform ${showSkipped ? "rotate-180" : ""}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              aria-hidden="true"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {showSkipped && (
+            <div id="skipped-images-panel" className="max-h-[24rem] overflow-y-auto table-responsive">
+              {skipped.length === 0 ? (
+                <div className="p-6 text-center text-sm text-gray-500">
+                  {skippedLoading ? "Loading skipped images…" : "No skipped images. All images needed alt text."}
+                </div>
+              ) : (
+                <table className="min-w-full divide-y divide-gray-200" aria-label="Skipped images — already have descriptive alt text">
+                  <thead className="bg-gray-50 sticky top-0 z-10">
+                    <tr>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-10">#</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[140px]">Source Page</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[140px]">Image URL</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[160px]">Existing Alt Text</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {skipped.map((s, idx) => (
+                      <SkippedRow
+                        key={s.id}
+                        skipped={s}
+                        index={idx}
+                        isGenerating={generatingSkippedId === s.id}
+                        isCopied={copiedId === s.id}
+                        anyGenerating={generatingSkippedId !== null}
+                        onCopy={handleCopySkipped}
+                        onGenerate={handleGenerateSkipped}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

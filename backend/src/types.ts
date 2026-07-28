@@ -42,3 +42,12 @@ export interface Session {
   token: string;
   createdAt: number;
 }
+
+export interface SkippedResult {
+  id: number;
+  job_id: string;
+  image_url: string;
+  source_page_url: string | null;
+  existing_alt_text: string | null;
+  created_at: string;
+}

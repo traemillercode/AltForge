@@ -19,6 +19,7 @@ export interface CrawlImage {
 export interface CrawlSkippedImage {
   url: string;
   altText: string | null;
+  sourcePageUrl: string;
 }
 
 export interface CrawlStats {
@@ -388,7 +389,7 @@ export async function crawlSite(startUrl: string): Promise<CrawlResult> {
       if (isGoodAlt(img.altText)) {
         stats.imagesSkipped++;
         if (stats.skippedImages.length < 500) {
-          stats.skippedImages.push({ url: img.url, altText: img.altText });
+          stats.skippedImages.push({ url: img.url, altText: img.altText, sourcePageUrl: img.sourcePageUrl });
         }
         continue;
       }
