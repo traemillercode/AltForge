@@ -1101,7 +1101,7 @@ export function jobsRoutes(db: Database): Hono {
     return c.json({ success: true });
   });
 
-  // GET /api/jobs/:id/report — report data for the job report page
+  // GET /api/jobs/:id/report — comprehensive WCAG compliance report
   router.get("/:id/report", (c) => {
     const userId = getUserId(c);
     const jobId = c.req.param("id");
@@ -1117,19 +1117,22 @@ export function jobsRoutes(db: Database): Hono {
       return c.json({ error: "Job not found" }, 404);
     }
 
-    // Load results
-    const results = db.query(
+    // Load results (always — even if 0)
+    const rawResults = db.query(
       `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, source_page_url, file_size, created_at
        FROM results WHERE job_id = ? ORDER BY created_at`
     ).all(jobId) as Record<string, unknown>[];
 
-    // Load skipped results for crawl jobs
+    // Load skipped results for ALL job types
     let skipped: Record<string, unknown>[] = [];
-    if (job.type === "crawl") {
+    try {
       skipped = db.query(
         `SELECT id, job_id, image_url, source_page_url, existing_alt_text, file_size, created_at
          FROM skipped_results WHERE job_id = ? ORDER BY id`
       ).all(jobId) as Record<string, unknown>[];
+    } catch {
+      // Table may not exist yet — safe fallback
+      skipped = [];
     }
 
     // Compute compliance breakdown
@@ -1138,10 +1141,44 @@ export function jobsRoutes(db: Database): Hono {
     let needsReview = 0;
     let decorative = 0;
     let creditUsage = 0;
+    let wcag111Pass = 0;   // 1.1.1 Non-text Content — images with meaningful alt text
+    let wcag111Fail = 0;   // 1.1.1 — images needing review
+    let wcag145Flag = 0;   // 1.4.5 Images of Text — images that might contain text
 
-    for (const r of results) {
+    // Enhance results with WCAG criteria
+    const results = rawResults.map((r) => {
       const altText = (r.alt_text as string) ?? "";
       const status = r.status as string;
+      const contextText = (r.context_text as string) ?? "";
+      const chars = altText.length;
+
+      // Determine WCAG criteria
+      const wcagCriteria: string[] = [];
+
+      if (status === "decorative" || altText === "") {
+        // 1.1.1 Non-text Content — decorative exception applies
+        wcagCriteria.push("1.1.1 (Decorative)");
+        wcag111Pass++;
+      } else if (status === "needs_review") {
+        // 1.1.1 — needs review (may fail)
+        wcagCriteria.push("1.1.1 ⚠ Needs Review");
+        wcag111Fail++;
+      } else {
+        // 1.1.1 — compliant with proper alt text
+        wcagCriteria.push("1.1.1 ✓");
+        wcag111Pass++;
+      }
+
+      // Check 1.4.5 Images of Text — heuristic: image URL/context suggests text content
+      const mayContainText = checkMayContainText(
+        (r.image_url as string) ?? "",
+        contextText,
+        altText
+      );
+      if (mayContainText) {
+        wcagCriteria.push("1.4.5 ⚠ Images of Text");
+        wcag145Flag++;
+      }
 
       if (altText !== "" && altText !== null) {
         creditUsage++;
@@ -1152,25 +1189,73 @@ export function jobsRoutes(db: Database): Hono {
       } else if (status === "needs_review") {
         needsReview++;
       } else {
-        // compliant — check length for sub-categorization
-        const chars = altText.length;
         if (chars > 125) {
           compliantLong++;
         } else {
           compliant++;
         }
       }
-    }
 
-    // Total images including skipped for crawl jobs
-    const totalImages = job.type === "crawl"
-      ? ((job.total_images as number) + skipped.length)
-      : (job.total_images as number);
+      return {
+        ...r,
+        wcag_criteria: wcagCriteria,
+        image_may_contain_text: mayContainText,
+      };
+    });
 
-    // Pass rate: (compliant + compliantLong + decorative) / total with results
+    // Enhance skipped with WCAG review flags
+    const enhancedSkipped = skipped.map((s) => {
+      const existingAlt = (s.existing_alt_text as string) ?? "";
+      const isGeneric = /^(image|photo|picture|graphic|logo|banner|icon|button|placeholder|spacer|img|\d+)$/i.test(existingAlt.trim());
+
+      return {
+        ...s,
+        needs_review: isGeneric,
+        wcag_criteria: isGeneric ? ["1.1.1 ⚠ Generic alt text"] : ["1.1.1 ✓"],
+      };
+    });
+
+    // Total image count: generated + skipped
+    const totalImages = results.length + skipped.length;
+
+    // Pass rate
     const totalWithResults = compliant + compliantLong + decorative + needsReview;
     const passRate = totalWithResults > 0
       ? Math.round(((compliant + compliantLong + decorative) / totalWithResults) * 100)
+      : 0;
+
+    // Overall grade
+    let overallGrade: "Pass" | "Needs Improvement" | "Fails";
+    if (totalImages === 0) {
+      overallGrade = "Fails";
+    } else if (passRate >= 80) {
+      overallGrade = "Pass";
+    } else if (passRate >= 50) {
+      overallGrade = "Needs Improvement";
+    } else {
+      overallGrade = "Fails";
+    }
+
+    // WCAG level approximation
+    // Level A: 1.1.1 is satisfied for all images that have alt text
+    // Level AA: 1.1.1 + 1.4.5 addressed
+    // Level AAA: requires longer alt text (>= 125 chars is ideal but not required)
+    let wcagLevel: "A" | "AA" | "AAA";
+    const wcag111Compliance = totalWithResults > 0
+      ? Math.round((wcag111Pass / totalWithResults) * 100)
+      : 0;
+
+    if (wcag111Compliance >= 90 && wcag145Flag === 0 && passRate >= 85) {
+      wcagLevel = "AAA";
+    } else if (wcag111Compliance >= 75 && passRate >= 70) {
+      wcagLevel = "AA";
+    } else {
+      wcagLevel = "A";
+    }
+
+    // Compliance rate (percentage of all images — including skipped — that are compliant)
+    const complianceRate = totalImages > 0
+      ? Math.round(((compliant + compliantLong + decorative + enhancedSkipped.filter(s => !(s as Record<string, unknown>).needs_review).length) / totalImages) * 100)
       : 0;
 
     return c.json({
@@ -1187,8 +1272,11 @@ export function jobsRoutes(db: Database): Hono {
       },
       totalImages,
       results,
-      skipped,
+      skipped: enhancedSkipped,
       creditUsage,
+      overallGrade,
+      wcagLevel,
+      complianceRate,
       compliance: {
         compliant,
         compliant_long: compliantLong,
@@ -1196,6 +1284,21 @@ export function jobsRoutes(db: Database): Hono {
         decorative,
         total: totalWithResults,
         passRate,
+      },
+      wcag_breakdown: {
+        "1.1.1": {
+          name: "1.1.1 Non-text Content",
+          level: "A",
+          pass: wcag111Pass,
+          fail: wcag111Fail,
+          description: "All non-text content has a text alternative serving the equivalent purpose.",
+        },
+        "1.4.5": {
+          name: "1.4.5 Images of Text",
+          level: "AA",
+          flagged: wcag145Flag,
+          description: "Text is used rather than images of text where technology allows.",
+        },
       },
     });
   });
@@ -1454,4 +1557,67 @@ ${imgTags}
       "Content-Disposition": `attachment; filename="${filename}.html"`,
     },
   });
+}
+
+/**
+ * Check if an image likely contains text (relevant to WCAG 1.4.5 Images of Text).
+ * Uses heuristics based on image URL patterns and context text.
+ */
+function checkMayContainText(
+  imageUrl: string,
+  contextText: string,
+  altText: string
+): boolean {
+  // Check URL hints that suggest text content
+  const textHints = [
+    /screenshot/i,
+    /banner/i,
+    /chart/i,
+    /graph/i,
+    /infographic/i,
+    /diagram/i,
+    /text/i,
+    /typography/i,
+    /font/i,
+    /poster/i,
+    /flyer/i,
+    /ad[-_]?banner/i,
+  ];
+
+  for (const pattern of textHints) {
+    if (pattern.test(imageUrl)) return true;
+  }
+
+  // Check context text hints
+  const contextHints = [
+    /screenshot/i,
+    /chart/i,
+    /diagram/i,
+    /infographic/i,
+    /graph/i,
+    /poster/i,
+    /flyer/i,
+    /text overlay/i,
+  ];
+
+  for (const pattern of contextHints) {
+    if (pattern.test(contextText)) return true;
+  }
+
+  // Check if alt text describes textual content
+  const altTextHints = [
+    /\bchart\b/i,
+    /\bdiagram\b/i,
+    /\binfographic\b/i,
+    /\bscreenshot\b/i,
+    /\bposter\b/i,
+    /\bflyer\b/i,
+    /\bmenu\b/i,
+  ];
+
+  for (const pattern of altTextHints) {
+    if (pattern.test(altText)) return true;
+  }
+
+  return false;
 }
