@@ -179,7 +179,7 @@ export function jobsRoutes(db: Database): Hono {
     ).get(jobId) as Record<string, unknown> | undefined;
 
     const results = db.query(
-      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, source_page_url, created_at
+      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, source_page_url, file_size, created_at
        FROM results WHERE job_id = ? ORDER BY created_at`
     ).all(jobId) as Record<string, unknown>[];
 
@@ -247,8 +247,8 @@ export function jobsRoutes(db: Database): Hono {
     // Create results rows for images that need alt text
     if (crawlResult.images.length > 0) {
       const insertResult = db.prepare(
-        `INSERT INTO results (id, job_id, image_url, status, alt_text, context_text, source_page_url, created_at)
-         VALUES (?, ?, ?, 'needs_review', ?, ?, ?, ?)`
+        `INSERT INTO results (id, job_id, image_url, status, alt_text, context_text, source_page_url, file_size, created_at)
+         VALUES (?, ?, ?, 'needs_review', ?, ?, ?, ?, ?)`
       );
 
       const insertResults = db.transaction(() => {
@@ -260,6 +260,7 @@ export function jobsRoutes(db: Database): Hono {
             img.altText,
             img.contextText,
             img.sourcePageUrl,
+            img.fileSize ?? null,
             now
           );
         }
@@ -271,8 +272,8 @@ export function jobsRoutes(db: Database): Hono {
     // Store skipped images
     if (crawlResult.stats.skippedImages.length > 0) {
       const insertSkipped = db.prepare(
-        `INSERT INTO skipped_results (job_id, image_url, source_page_url, existing_alt_text, created_at)
-         VALUES (?, ?, ?, ?, ?)`
+        `INSERT INTO skipped_results (job_id, image_url, source_page_url, existing_alt_text, file_size, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
       );
 
       const insertAllSkipped = db.transaction(() => {
@@ -282,6 +283,7 @@ export function jobsRoutes(db: Database): Hono {
             skipped.url,
             skipped.sourcePageUrl,
             skipped.altText,
+            skipped.fileSize ?? null,
             now
           );
         }
@@ -298,7 +300,7 @@ export function jobsRoutes(db: Database): Hono {
     ).get(jobId) as Record<string, unknown> | undefined;
 
     const results = db.query(
-      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, source_page_url, created_at
+      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, source_page_url, file_size, created_at
        FROM results WHERE job_id = ? ORDER BY created_at`
     ).all(jobId) as Record<string, unknown>[];
 
@@ -463,8 +465,8 @@ export function jobsRoutes(db: Database): Hono {
 
     // Create results rows — for direct uploads, image_url is a data URI
     const insertResult = db.prepare(
-      `INSERT INTO results (id, job_id, image_url, status, created_at)
-       VALUES (?, ?, ?, 'needs_review', ?)`
+      `INSERT INTO results (id, job_id, image_url, status, file_size, created_at)
+       VALUES (?, ?, ?, 'needs_review', ?, ?)`
     );
 
     const insertResults = db.transaction(() => {
@@ -476,7 +478,7 @@ export function jobsRoutes(db: Database): Hono {
           : ext === ".webp" ? "image/webp"
           : "image/gif";
         const dataUri = `data:${mimeType};base64,${img.data.toString("base64")}`;
-        insertResult.run(crypto.randomUUID(), jobId, dataUri, now);
+        insertResult.run(crypto.randomUUID(), jobId, dataUri, img.size, now);
       }
     });
 
@@ -490,7 +492,7 @@ export function jobsRoutes(db: Database): Hono {
     ).get(jobId) as Record<string, unknown> | undefined;
 
     const results = db.query(
-      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, source_page_url, created_at
+      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, source_page_url, file_size, created_at
        FROM results WHERE job_id = ? ORDER BY created_at`
     ).all(jobId) as Record<string, unknown>[];
 
@@ -560,7 +562,7 @@ export function jobsRoutes(db: Database): Hono {
 
     // Load results that need processing (status = 'needs_review')
     const resultsToProcess = db.query(
-      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, source_page_url, created_at
+      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, source_page_url, file_size, created_at
        FROM results WHERE job_id = ? AND status = 'needs_review'
        ORDER BY created_at`
     ).all(jobId) as Record<string, unknown>[];
@@ -576,7 +578,7 @@ export function jobsRoutes(db: Database): Hono {
     ).get(jobId) as Record<string, unknown>;
 
     const allResults = db.query(
-      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, source_page_url, created_at
+      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, source_page_url, file_size, created_at
        FROM results WHERE job_id = ? ORDER BY created_at`
     ).all(jobId) as Record<string, unknown>[];
 
@@ -635,7 +637,7 @@ export function jobsRoutes(db: Database): Hono {
     }
 
     const results = db.query(
-      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, source_page_url, created_at
+      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, source_page_url, file_size, created_at
        FROM results WHERE job_id = ? ORDER BY created_at`
     ).all(jobId) as Record<string, unknown>[];
 
@@ -815,7 +817,7 @@ export function jobsRoutes(db: Database): Hono {
       const total = totalRow.count;
 
       const skipped = db.query(
-        `SELECT id, job_id, image_url, source_page_url, existing_alt_text, created_at
+        `SELECT id, job_id, image_url, source_page_url, existing_alt_text, file_size, created_at
          FROM skipped_results WHERE job_id = ? ORDER BY id LIMIT ? OFFSET ?`
       ).all(jobId, limit, offset) as Record<string, unknown>[];
 
@@ -825,6 +827,7 @@ export function jobsRoutes(db: Database): Hono {
         image_url: s.image_url,
         source_page_url: s.source_page_url,
         existing_alt_text: s.existing_alt_text,
+        file_size: s.file_size ?? null,
         created_at: s.created_at,
       }));
 
@@ -833,7 +836,7 @@ export function jobsRoutes(db: Database): Hono {
 
     // No pagination — return all (backward compatible)
     const skipped = db.query(
-      `SELECT id, job_id, image_url, source_page_url, existing_alt_text, created_at
+      `SELECT id, job_id, image_url, source_page_url, existing_alt_text, file_size, created_at
        FROM skipped_results WHERE job_id = ? ORDER BY id`
     ).all(jobId) as Record<string, unknown>[];
 
@@ -843,6 +846,7 @@ export function jobsRoutes(db: Database): Hono {
       image_url: s.image_url,
       source_page_url: s.source_page_url,
       existing_alt_text: s.existing_alt_text,
+      file_size: s.file_size ?? null,
       created_at: s.created_at,
     }));
 
@@ -932,7 +936,7 @@ export function jobsRoutes(db: Database): Hono {
 
     const moveToResults = db.transaction(() => {
       db.run(
-        `INSERT INTO results (id, job_id, image_url, alt_text, char_count, status, source_page_url, created_at)
+        `INSERT INTO results (id, job_id, image_url, alt_text, char_count, status, source_page_url, file_size, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [newResultId, jobId, skippedImageUrl, altText, charCount, status, skippedSourcePageUrl, now]
       );
@@ -1053,7 +1057,7 @@ export function jobsRoutes(db: Database): Hono {
 
         const moveToResults = db.transaction(() => {
           db.run(
-            `INSERT INTO results (id, job_id, image_url, alt_text, char_count, status, source_page_url, created_at)
+            `INSERT INTO results (id, job_id, image_url, alt_text, char_count, status, source_page_url, file_size, created_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             [newResultId, jobId, skippedImageUrl, altText, charCount, status, skippedSourcePageUrl, now]
           );
@@ -1115,7 +1119,7 @@ export function jobsRoutes(db: Database): Hono {
 
     // Load results
     const results = db.query(
-      `SELECT id, job_id, image_url, alt_text, char_count, status, source_page_url
+      `SELECT id, job_id, image_url, alt_text, char_count, status, source_page_url, file_size
        FROM results WHERE job_id = ? ORDER BY created_at`
     ).all(jobId) as Record<string, unknown>[];
 
@@ -1267,16 +1271,28 @@ function escapeCsvField(value: string): string {
 }
 
 /**
+ * Format file size in bytes to human-readable string.
+ */
+function formatFileSize(bytes: number | null | undefined): string {
+  if (bytes === null || bytes === undefined) return "N/A";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
  * Generate a CSV file and return it as a download response.
  */
 function exportCsv(results: Record<string, unknown>[], filename: string): Response {
-  const header = "image_url,alt_text,char_count,status";
+  const header = "image_url,alt_text,char_count,status,source_page_url,file_size";
   const rows = results.map((r) => {
     const url = escapeCsvField((r.image_url as string) || "");
     const alt = escapeCsvField((r.alt_text as string) || "");
     const chars = String(r.char_count ?? 0);
     const status = escapeCsvField((r.status as string) || "");
-    return `${url},${alt},${chars},${status}`;
+    const sourcePage = escapeCsvField((r.source_page_url as string) || "");
+    const fileSizeStr = formatFileSize(r.file_size as number | null | undefined);
+    return `${url},${alt},${chars},${status},${sourcePage},${fileSizeStr}`;
   });
   const csv = [header, ...rows].join("\n") + "\n";
 
