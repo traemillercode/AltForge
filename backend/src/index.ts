@@ -6,6 +6,7 @@ import { authRoutes } from "./routes/auth.js";
 import { jobsRoutes } from "./routes/jobs.js";
 import { creditsRoutes } from "./routes/credits.js";
 import { sampleRoutes } from "./routes/sample.js";
+import { webhookRoutes } from "./routes/webhooks.js";
 
 const app = new Hono();
 
@@ -35,6 +36,9 @@ app.route("/api/credits", creditsRoutes(db));
 
 // Sample route (no auth, rate-limited)
 app.route("/api/sample", sampleRoutes());
+
+// Webhook routes (Stripe — raw body, no auth)
+app.route("/api/webhooks", webhookRoutes(db));
 
 // Protected dashboard endpoint
 app.get("/api/dashboard", async (c) => {

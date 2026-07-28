@@ -1,7 +1,15 @@
 import { Link } from "react-router-dom";
+import { useAuth } from "../lib/useAuth";
+
+const STRIPE_LINKS = {
+  starter: "https://buy.stripe.com/9B6eVc27FgeF0lT34l1Nu00",
+  growth: "https://buy.stripe.com/00w6oGdQne6xb0xbAR1Nu01",
+  pro: "https://buy.stripe.com/eVqaEWbIf4vX6Kh34l1Nu02",
+};
 
 interface PricingTier {
   name: string;
+  planKey: keyof typeof STRIPE_LINKS;
   price: string;
   period: string;
   credits: string;
@@ -13,6 +21,7 @@ interface PricingTier {
 const tiers: PricingTier[] = [
   {
     name: "Starter",
+    planKey: "starter",
     price: "$19",
     period: "one-time",
     credits: "250 credits",
@@ -28,6 +37,7 @@ const tiers: PricingTier[] = [
   },
   {
     name: "Growth",
+    planKey: "growth",
     price: "$49",
     period: "one-time",
     credits: "1,000 credits",
@@ -45,6 +55,7 @@ const tiers: PricingTier[] = [
   },
   {
     name: "Pro",
+    planKey: "pro",
     price: "$39",
     period: "/month",
     credits: "1,500 credits/month",
@@ -62,6 +73,17 @@ const tiers: PricingTier[] = [
 ];
 
 export default function PricingPage() {
+  const { user } = useAuth();
+
+  const getCheckoutUrl = (planKey: keyof typeof STRIPE_LINKS): string => {
+    const base = STRIPE_LINKS[planKey];
+    if (user) {
+      const separator = base.includes("?") ? "&" : "?";
+      return `${base}${separator}client_reference_id=${encodeURIComponent(user.id)}`;
+    }
+    return base;
+  };
+
   return (
     <div>
       {/* Hero */}
@@ -147,26 +169,43 @@ export default function PricingPage() {
                   </ul>
                 </div>
 
-                <a
-                  href="#"
-                  title="Coming soon — Stripe integration pending"
-                  className={`mt-8 inline-flex items-center justify-center w-full px-6 py-3 border rounded-lg text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-brand-500 focus-visible:outline-offset-2 ${
-                    tier.highlight
-                      ? "border-transparent text-white bg-brand-600 hover:bg-brand-700"
-                      : "border-brand-600 text-brand-600 bg-white hover:bg-brand-50"
-                  }`}
-                  aria-label={`Get started with ${tier.name} plan — coming soon`}
-                  onClick={(e) => e.preventDefault()}
-                >
-                  Get started
-                </a>
+                {user ? (
+                  <a
+                    href={getCheckoutUrl(tier.planKey)}
+                    className={`mt-8 inline-flex items-center justify-center w-full px-6 py-3 border rounded-lg text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-brand-500 focus-visible:outline-offset-2 ${
+                      tier.highlight
+                        ? "border-transparent text-white bg-brand-600 hover:bg-brand-700"
+                        : "border-brand-600 text-brand-600 bg-white hover:bg-brand-50"
+                    }`}
+                    aria-label={`Buy ${tier.name} plan — ${tier.price} for ${tier.credits}`}
+                  >
+                    Buy {tier.name}
+                  </a>
+                ) : (
+                  <Link
+                    to={`/signup?redirect=/pricing`}
+                    className={`mt-8 inline-flex items-center justify-center w-full px-6 py-3 border rounded-lg text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-brand-500 focus-visible:outline-offset-2 ${
+                      tier.highlight
+                        ? "border-transparent text-white bg-brand-600 hover:bg-brand-700"
+                        : "border-brand-600 text-brand-600 bg-white hover:bg-brand-50"
+                    }`}
+                    aria-label={`Sign up to buy ${tier.name} plan`}
+                  >
+                    Sign up to buy
+                  </Link>
+                )}
               </div>
             ))}
           </div>
 
           <p className="mt-8 text-center text-sm text-gray-500">
-            Stripe payment integration coming soon. All plans will be available
-            for purchase directly from this page.
+            Secure payments processed by Stripe.{" "}
+            {!user && (
+              <Link to="/login" className="text-brand-600 hover:text-brand-800 underline">
+                Log in
+              </Link>
+            )}
+            {!user && " to add your user ID to checkout for automatic credit delivery."}
           </p>
         </div>
       </section>

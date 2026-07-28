@@ -53,6 +53,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     <span aria-hidden="true">🪙</span>
                     {user.credits} credits
                   </span>
+                  <Link
+                    to="/pricing"
+                    className="text-sm text-brand-600 hover:text-brand-800 font-medium focus-visible:outline-2 focus-visible:outline-brand-500 hidden sm:inline"
+                    aria-label="Buy more credits"
+                  >
+                    Buy credits
+                  </Link>
                   <button
                     onClick={handleLogout}
                     className="text-sm text-gray-600 hover:text-gray-900 underline focus-visible:outline-2 focus-visible:outline-brand-500"
