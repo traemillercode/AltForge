@@ -261,11 +261,13 @@ interface SkippedRowProps {
   isGenerating: boolean;
   isCopied: boolean;
   anyGenerating: boolean;
+  isSelected: boolean;
+  onToggleSelect: (skipId: number) => void;
   onCopy: (altText: string | null, skipId: number) => void;
   onGenerate: (skipId: number) => void;
 }
 
-function SkippedRow({ skipped, index, isGenerating, isCopied, anyGenerating, onCopy, onGenerate }: SkippedRowProps) {
+function SkippedRow({ skipped, index, isGenerating, isCopied, anyGenerating, isSelected, onToggleSelect, onCopy, onGenerate }: SkippedRowProps) {
   const [expandedAlt, setExpandedAlt] = useState(false);
   const [imgError, setImgError] = useState(false);
   const altText = skipped.existing_alt_text ?? "";
@@ -274,6 +276,16 @@ function SkippedRow({ skipped, index, isGenerating, isCopied, anyGenerating, onC
 
   return (
     <tr className="hover:bg-gray-50">
+      <td className="px-3 py-3 whitespace-nowrap">
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={() => onToggleSelect(skipped.id)}
+          disabled={isGenerating}
+          className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          aria-label={`Select skipped image ${index + 1}`}
+        />
+      </td>
       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{index + 1}</td>
       <td className="px-2 py-3">
         {imgError ? (
@@ -415,6 +427,8 @@ export default function JobDetailPage() {
   const SKIPPED_PAGE_LIMIT = 10;
   const [skippedPage, setSkippedPage] = useState(1);
   const [skippedTotal, setSkippedTotal] = useState(0);
+  const [selectedSkippedIds, setSelectedSkippedIds] = useState<Set<number>>(new Set());
+  const [batchGenerating, setBatchGenerating] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -632,6 +646,68 @@ export default function JobDetailPage() {
       }
     } finally {
       setGeneratingSkippedId(null);
+    }
+  }
+
+  function handleToggleSkippedSelect(skipId: number) {
+    setSelectedSkippedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(skipId)) {
+        next.delete(skipId);
+      } else {
+        next.add(skipId);
+      }
+      return next;
+    });
+  }
+
+  function handleSelectAll() {
+    const allIds = skipped.map((s) => s.id);
+    const allSelected = allIds.every((id) => selectedSkippedIds.has(id));
+    if (allSelected) {
+      // Deselect all on current page
+      setSelectedSkippedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of allIds) next.delete(id);
+        return next;
+      });
+    } else {
+      // Select all on current page
+      setSelectedSkippedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of allIds) next.add(id);
+        return next;
+      });
+    }
+  }
+
+  async function handleBatchGenerate() {
+    if (!id || batchGenerating || selectedSkippedIds.size === 0) return;
+    setBatchGenerating(true);
+    try {
+      const idsArray = Array.from(selectedSkippedIds);
+      const result = await api.batchGenerateSkipped(id, idsArray);
+      let message = `Generated alt text for ${result.generated} image${result.generated !== 1 ? "s" : ""}.`;
+      if (result.errors.length > 0) {
+        message += `\n\n${result.errors.length} error${result.errors.length !== 1 ? "s" : ""}:`;
+        for (const err of result.errors) {
+          message += `\n• ${err}`;
+        }
+      }
+      alert(message);
+      // Clear selection
+      setSelectedSkippedIds(new Set());
+      // Refresh data
+      await refreshUser();
+      await loadJob(id);
+    } catch (err) {
+      if (err instanceof ApiClientError) {
+        alert(err.message);
+      } else {
+        alert("Batch generation failed. Please try again.");
+      }
+    } finally {
+      setBatchGenerating(false);
     }
   }
 
@@ -1095,6 +1171,16 @@ export default function JobDetailPage() {
                 <table className="min-w-full divide-y divide-gray-200" aria-label="Skipped images — already have descriptive alt text">
                   <thead className="bg-gray-50 sticky top-0 z-10">
                     <tr>
+                      <th scope="col" className="px-3 py-3 w-10">
+                        <input
+                          type="checkbox"
+                          checked={skipped.length > 0 && skipped.every((s) => selectedSkippedIds.has(s.id))}
+                          onChange={handleSelectAll}
+                          disabled={batchGenerating}
+                          className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          aria-label={skipped.length > 0 && skipped.every((s) => selectedSkippedIds.has(s.id)) ? "Deselect all skipped images" : "Select all skipped images"}
+                        />
+                      </th>
                       <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-10">#</th>
                       <th scope="col" className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Thumb</th>
                       <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[140px]">Source Page</th>
@@ -1111,7 +1197,9 @@ export default function JobDetailPage() {
                         index={idx}
                         isGenerating={generatingSkippedId === s.id}
                         isCopied={copiedId === s.id}
-                        anyGenerating={generatingSkippedId !== null}
+                        anyGenerating={generatingSkippedId !== null || batchGenerating}
+                        isSelected={selectedSkippedIds.has(s.id)}
+                        onToggleSelect={handleToggleSkippedSelect}
                         onCopy={handleCopySkipped}
                         onGenerate={handleGenerateSkipped}
                       />
@@ -1150,6 +1238,29 @@ export default function JobDetailPage() {
                       </svg>
                     </button>
                   </div>
+                </div>
+              )}
+
+              {/* Batch generate button */}
+              {selectedSkippedIds.size > 0 && (
+                <div className="flex items-center justify-end px-4 py-3 border-t border-gray-200 bg-brand-50">
+                  {batchGenerating ? (
+                    <span className="inline-flex items-center text-sm text-brand-700" role="status">
+                      <div className="w-4 h-4 border-2 border-brand-200 border-t-brand-600 rounded-full animate-spin mr-2" aria-hidden="true" />
+                      Generating {selectedSkippedIds.size} image{selectedSkippedIds.size !== 1 ? "s" : ""}…
+                    </span>
+                  ) : (
+                    <button
+                      onClick={handleBatchGenerate}
+                      className="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-brand-600 rounded-lg hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-brand-500 transition-colors"
+                      aria-label={`Generate alt text for ${selectedSkippedIds.size} selected image${selectedSkippedIds.size !== 1 ? "s" : ""}`}
+                    >
+                      <svg className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      Generate Selected ({selectedSkippedIds.size})
+                    </button>
+                  )}
                 </div>
               )}
             </div>

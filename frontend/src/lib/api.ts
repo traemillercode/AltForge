@@ -268,6 +268,22 @@ export const api = {
     return handleResponse(res);
   },
 
+  async batchGenerateSkipped(
+    jobId: string,
+    skippedIds: number[]
+  ): Promise<{ generated: number; errors: string[] }> {
+    const res = await fetch(
+      `${API_BASE}/jobs/${encodeURIComponent(jobId)}/skipped/batch-generate`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skippedIds }),
+        credentials: "include",
+      }
+    );
+    return handleResponse<{ generated: number; errors: string[] }>(res);
+  },
+
   getExportUrl(jobId: string, format: "csv" | "html"): string {
     return `${API_BASE}/jobs/${encodeURIComponent(jobId)}/export?format=${format}`;
   },
