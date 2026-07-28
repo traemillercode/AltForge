@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/useAuth";
 import { api } from "../lib/api";
@@ -5,6 +6,22 @@ import { api } from "../lib/api";
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, setUser } = useAuth();
   const navigate = useNavigate();
+
+  // Load Google AdSense script (only when publisher ID is configured)
+  useEffect(() => {
+    const publisherId = import.meta.env.VITE_ADSENSE_PUBLISHER_ID as string | undefined;
+    if (!publisherId) return;
+
+    const scriptId = "google-adsense-script";
+    if (document.getElementById(scriptId)) return;
+
+    const script = document.createElement("script");
+    script.id = scriptId;
+    script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-${publisherId}`;
+    script.async = true;
+    script.crossOrigin = "anonymous";
+    document.head.appendChild(script);
+  }, []);
 
   const handleLogout = async () => {
     await api.logout();
