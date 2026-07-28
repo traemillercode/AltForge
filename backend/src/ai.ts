@@ -113,7 +113,7 @@ export async function generateAltText(
       const imageBlock = await imageUrlToContentBlock(imageUrl);
 
       const response = await anthropic.messages.create({
-        model: "claude-3-haiku-20240307",
+        model: "claude-haiku-4-5-20251001",
         max_tokens: 150,
         system: ALT_TEXT_SYSTEM_PROMPT,
         messages: [
