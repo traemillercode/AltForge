@@ -1115,19 +1115,17 @@ export default function JobDetailPage() {
                 )}
               </div>
             )}
-            {/* Generate Report button */}
-            {isCompleted && (
-              <button
-                onClick={() => navigate(`/jobs/${id}/report`)}
-                className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white bg-brand-600 rounded-md hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-brand-500 transition-colors"
-                aria-label="Generate accessibility report"
-              >
-                <svg className="mr-1 h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Generate Report
-              </button>
-            )}
+            {/* Generate Report button — always available */}
+            <button
+              onClick={() => navigate(`/jobs/${id}/report`)}
+              className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white bg-brand-600 rounded-md hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-brand-500 transition-colors"
+              aria-label="Generate accessibility report"
+            >
+              <svg className="mr-1 h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Generate Report
+            </button>
           </div>
         </div>
         <div className="max-h-[32rem] overflow-y-auto table-responsive">
