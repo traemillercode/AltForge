@@ -83,6 +83,7 @@ if (isProduction) {
   // Serve static assets (JS, CSS, images, etc.)
   app.use("/assets/*", serveStatic({ root: frontendDist }));
   app.use("/*.svg", serveStatic({ root: frontendDist }));
+  app.use("/*.png", serveStatic({ root: frontendDist }));
   app.use("/*.ico", serveStatic({ root: frontendDist }));
   
   // For SPA routing, serve index.html for all non-API, non-asset routes

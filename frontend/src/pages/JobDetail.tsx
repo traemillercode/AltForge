@@ -966,7 +966,7 @@ export default function JobDetailPage() {
                         </a>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-900 max-w-md">
+                    <td className="px-4 py-3 text-sm text-gray-900 max-w-md break-words">
                       <EditableAltCell
                         result={result}
                         jobId={id!}
