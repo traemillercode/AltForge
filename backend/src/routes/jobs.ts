@@ -952,6 +952,124 @@ export function jobsRoutes(db: Database): Hono {
     });
   });
 
+  // POST /api/jobs/:id/skipped/batch-generate — batch generate alt text for skipped images
+  router.post("/:id/skipped/batch-generate", async (c) => {
+    const userId = getUserId(c);
+    const jobId = c.req.param("id");
+
+    // Verify job ownership
+    const job = db.query(
+      `SELECT id, type FROM jobs WHERE id = ? AND user_id = ?`
+    ).get(jobId, userId) as Record<string, unknown> | undefined;
+
+    if (!job) {
+      return c.json({ error: "Job not found" }, 404);
+    }
+
+    if (job.type !== "crawl") {
+      return c.json({ error: "Batch generation is only available for crawl jobs" }, 400);
+    }
+
+    // Parse body
+    let body: { skippedIds?: number[] };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    if (!body.skippedIds || !Array.isArray(body.skippedIds) || body.skippedIds.length === 0) {
+      return c.json({ error: "skippedIds must be a non-empty array of IDs" }, 400);
+    }
+
+    const skippedIds = body.skippedIds.filter((id) => typeof id === "number" && !isNaN(id));
+    if (skippedIds.length === 0) {
+      return c.json({ error: "No valid numeric IDs provided" }, 400);
+    }
+
+    // Get API key
+    let apiKey: string;
+    try {
+      apiKey = requireApiKey();
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 500);
+    }
+
+    const errors: string[] = [];
+    let generated = 0;
+
+    // Process each skipped image individually
+    for (const skippedId of skippedIds) {
+      try {
+        // Load the skipped result and verify it belongs to the job
+        const skipped = db.query(
+          `SELECT id, job_id, image_url, existing_alt_text, source_page_url
+           FROM skipped_results WHERE id = ? AND job_id = ?`
+        ).get(skippedId, jobId) as Record<string, unknown> | undefined;
+
+        if (!skipped) {
+          errors.push(`Skipped image #${skippedId}: not found for this job`);
+          continue;
+        }
+
+        // Check user credits inside the loop (they may get exhausted)
+        const user = db.query("SELECT credits FROM users WHERE id = ?")
+          .get(userId) as { credits: number } | undefined;
+
+        if (!user || user.credits < 1) {
+          errors.push(`Skipped image #${skippedId}: insufficient credits`);
+          continue;
+        }
+
+        // Deduct 1 credit
+        db.run("UPDATE users SET credits = credits - 1 WHERE id = ? AND credits > 0", [userId]);
+
+        // Call AI generation
+        let altText: string;
+        let status: string;
+        let charCount: number;
+
+        try {
+          const genResult = await generateAltText(
+            skipped.image_url as string,
+            null,
+            apiKey
+          );
+          altText = genResult.altText;
+          status = genResult.status;
+          charCount = genResult.charCount;
+        } catch (err) {
+          // Refund the credit on AI failure
+          db.run("UPDATE users SET credits = credits + 1 WHERE id = ?", [userId]);
+          errors.push(`Skipped image #${skippedId}: AI generation failed — ${err instanceof Error ? err.message : "Unknown error"}`);
+          continue;
+        }
+
+        // Insert result and delete skipped row in a transaction
+        const now = new Date().toISOString();
+        const newResultId = crypto.randomUUID();
+        const skippedImageUrl = skipped.image_url as string;
+        const skippedSourcePageUrl = skipped.source_page_url as string | null;
+
+        const moveToResults = db.transaction(() => {
+          db.run(
+            `INSERT INTO results (id, job_id, image_url, alt_text, char_count, status, source_page_url, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [newResultId, jobId, skippedImageUrl, altText, charCount, status, skippedSourcePageUrl, now]
+          );
+          db.run("DELETE FROM skipped_results WHERE id = ?", [skippedId]);
+        });
+
+        moveToResults();
+        generated++;
+      } catch (err) {
+        errors.push(`Skipped image #${skippedId}: unexpected error — ${err instanceof Error ? err.message : "Unknown error"}`);
+      }
+    }
+
+    return c.json({ generated, errors });
+  });
+
   // DELETE /api/jobs/:id — delete a pending job
   router.delete("/:id", async (c) => {
     const userId = getUserId(c);
