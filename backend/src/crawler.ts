@@ -4,7 +4,6 @@
  */
 
 const PAGE_TIMEOUT_MS = 10_000;
-const MAX_PAGES = 50;
 const MAX_IMAGES = 1_000;
 
 const GENERIC_ALT_PATTERNS = /^(image|photo|picture|img|placeholder|spacer|icon|logo|graphic|pic|figure|thumbnail)$/i;
@@ -278,13 +277,14 @@ async function fetchText(url: string, timeoutMs: number): Promise<string | null>
 
 /**
  * Main crawl function.
- * Given a starting URL, discovers pages via sitemap (or just the single URL),
- * extracts images with missing/generic alt text, and returns results.
+ * Crawls ONLY the exact URL provided — no sitemap discovery, no following links.
+ * Respects robots.txt disallowed paths on the single URL.
+ * Extracts images with missing/generic alt text and returns results.
  */
 export async function crawlSite(startUrl: string): Promise<CrawlResult> {
   const errors: string[] = [];
   const stats: CrawlStats = {
-    pagesFound: 0,
+    pagesFound: 1,
     pagesCrawled: 0,
     pagesFailed: 0,
     imagesFound: 0,
@@ -303,60 +303,21 @@ export async function crawlSite(startUrl: string): Promise<CrawlResult> {
   }
 
   const origin = baseUrl.origin;
-  let disallowed: string[] = [];
 
-  // 1. Try to fetch robots.txt
+  // 1. Try to fetch robots.txt — only to check if the single URL is disallowed
   const robotsUrl = `${origin}/robots.txt`;
   const robotsText = await fetchText(robotsUrl, PAGE_TIMEOUT_MS);
 
   if (robotsText) {
     const parsed = parseRobotsTxt(robotsText);
-    disallowed = parsed.disallowed;
     // Don't crawl the starting URL if it's disallowed
-    if (isPathDisallowed(startUrl, disallowed)) {
+    if (isPathDisallowed(startUrl, parsed.disallowed)) {
       return { images: [], stats, errors: ["URL is disallowed by robots.txt"] };
     }
   }
 
-  // 2. Discover pages to crawl
-  let pageUrls: string[] = [startUrl];
-
-  // Try sitemap from robots.txt
-  if (robotsText) {
-    const { sitemaps } = parseRobotsTxt(robotsText);
-    for (const sitemapUrl of sitemaps) {
-      if (pageUrls.length >= MAX_PAGES) break;
-      const sitemapXml = await fetchText(sitemapUrl, PAGE_TIMEOUT_MS);
-      if (sitemapXml) {
-        const locUrls = parseSitemapXml(sitemapXml);
-        for (const locUrl of locUrls) {
-          if (pageUrls.length >= MAX_PAGES) break;
-          if (!isPathDisallowed(locUrl, disallowed)) {
-            pageUrls.push(locUrl);
-          }
-        }
-      }
-    }
-  }
-
-  // If no sitemap was found, also try /sitemap.xml directly
-  if (pageUrls.length <= 1) {
-    const sitemapUrl = `${origin}/sitemap.xml`;
-    const sitemapXml = await fetchText(sitemapUrl, PAGE_TIMEOUT_MS);
-    if (sitemapXml) {
-      const locUrls = parseSitemapXml(sitemapXml);
-      for (const locUrl of locUrls) {
-        if (pageUrls.length >= MAX_PAGES) break;
-        if (!isPathDisallowed(locUrl, disallowed)) {
-          pageUrls.push(locUrl);
-        }
-      }
-    }
-  }
-
-  // Deduplicate and cap
-  pageUrls = [...new Set(pageUrls)].slice(0, MAX_PAGES);
-  stats.pagesFound = pageUrls.length;
+  // 2. Crawl only the exact URL entered — no sitemaps, no page discovery
+  const pageUrls: string[] = [startUrl];
 
   // 3. Crawl each page and extract images
   const allImages: CrawlImage[] = [];

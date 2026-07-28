@@ -280,9 +280,13 @@ function SkippedRow({ skipped, index, isGenerating, isCopied, anyGenerating, onC
             href={skipped.source_page_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-brand-600 hover:text-brand-800 hover:underline focus-visible:outline-2 focus-visible:outline-brand-500 truncate block"
+            className="inline-flex items-center gap-1 text-brand-600 hover:text-brand-800 hover:underline focus-visible:outline-2 focus-visible:outline-brand-500 truncate block"
+            title={skipped.source_page_url}
           >
-            {skipped.source_page_url}
+            <svg className="h-3 w-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            <span className="truncate">{skipped.source_page_url}</span>
           </a>
         ) : (
           <span className="text-gray-400">—</span>
@@ -598,6 +602,26 @@ export default function JobDetailPage() {
     } finally {
       setGeneratingSkippedId(null);
     }
+  }
+
+  function handleExportSkippedCsv() {
+    if (skipped.length === 0) return;
+    // Build CSV: image_url, source_page_url, existing_alt_text
+    const header = "image_url,source_page_url,existing_alt_text";
+    const rows = skipped.map((s) => {
+      const escapeField = (v: string | null) => `"${(v ?? "").replace(/"/g, '""')}"`;
+      return `${escapeField(s.image_url)},${escapeField(s.source_page_url)},${escapeField(s.existing_alt_text)}`;
+    });
+    const csv = [header, ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `altforge-skipped-${id ?? "export"}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   function handleExport(format: "csv" | "html") {
@@ -1005,15 +1029,30 @@ export default function JobDetailPage() {
                 <div className="w-3.5 h-3.5 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" aria-hidden="true" />
               )}
             </div>
-            <svg
-              className={`h-4 w-4 text-gray-500 transition-transform ${showSkipped ? "rotate-180" : ""}`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              aria-hidden="true"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
+            <div className="flex items-center gap-2">
+              {skipped.length > 0 && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleExportSkippedCsv(); }}
+                  className="inline-flex items-center px-2.5 py-1 text-xs font-medium text-brand-700 bg-brand-50 border border-brand-200 rounded hover:bg-brand-100 focus-visible:outline-2 focus-visible:outline-brand-500 transition-colors"
+                  title="Download skipped images as CSV"
+                  aria-label="Export skipped images as CSV"
+                >
+                  <svg className="mr-1 h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Export CSV
+                </button>
+              )}
+              <svg
+                className={`h-4 w-4 text-gray-500 transition-transform ${showSkipped ? "rotate-180" : ""}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                aria-hidden="true"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
           </button>
           {showSkipped && (
             <div id="skipped-images-panel" className="max-h-[24rem] overflow-y-auto table-responsive">
