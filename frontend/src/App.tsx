@@ -11,6 +11,7 @@ import JobDetailPage from "./pages/JobDetail";
 import PricingPage from "./pages/Pricing";
 import PaymentSuccessPage from "./pages/PaymentSuccess";
 import TermsPage from "./pages/Terms";
+import PrivacyPage from "./pages/Privacy";
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
           <Route path="/pricing" element={<PricingPage />} />
           <Route path="/payment/success" element={<PaymentSuccessPage />} />
           <Route path="/terms" element={<TermsPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
           <Route
             path="/dashboard"
             element={

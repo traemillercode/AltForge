@@ -136,6 +136,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               >
                 Terms of Service
               </Link>
+              <Link
+                to="/privacy"
+                className="text-sm text-gray-500 hover:text-gray-700 focus-visible:outline-2 focus-visible:outline-brand-500"
+              >
+                Privacy Policy
+              </Link>
               <a
                 href="mailto:altforgeaccessibility@gmail.com"
                 className="text-sm text-gray-500 hover:text-gray-700 focus-visible:outline-2 focus-visible:outline-brand-500"

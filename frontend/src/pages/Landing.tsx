@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
 import FreeSample from "../components/FreeSample";
-import AdUnit from "../components/AdUnit";
 
 export default function LandingPage() {
   return (
@@ -50,11 +49,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Ad: Below hero */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
-        <AdUnit slot="hero-bottom" className="min-h-[90px]" />
-      </div>
-
       {/* Free Sample */}
       <div id="free-sample">
         <FreeSample />
@@ -99,11 +93,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Ad: Mid-page */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
-        <AdUnit slot="mid-page" className="min-h-[90px]" />
-      </div>
-
       {/* Audience */}
       <section className="bg-white py-10 md:py-14" aria-labelledby="audience-heading">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -139,11 +128,6 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
-
-      {/* Ad: Before CTA */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
-        <AdUnit slot="before-cta" className="min-h-[90px]" />
-      </div>
 
       {/* CTA */}
       <section className="bg-brand-700 py-10" aria-labelledby="cta-heading">
