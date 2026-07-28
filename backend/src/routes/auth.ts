@@ -4,6 +4,14 @@ import type { UserRow } from "../types.js";
 import { createSession, destroySession, getUserId } from "../middleware/auth.js";
 import { sendEmail } from "../email.js";
 
+const STRIPE_LINKS: Record<string, string> = {
+  starter: "https://buy.stripe.com/9B6eVc27FgeF0lT34l1Nu00",
+  growth: "https://buy.stripe.com/00w6oGdQne6xb0xbAR1Nu01",
+  pro: "https://buy.stripe.com/eVqaEWbIf4vX6Kh34l1Nu02",
+};
+
+const VALID_PLANS = Object.keys(STRIPE_LINKS);
+
 export function authRoutes(db: Database): Hono {
   const router = new Hono();
 
@@ -11,7 +19,7 @@ export function authRoutes(db: Database): Hono {
   router.post("/signup", async (c) => {
     try {
       const body = await c.req.json();
-      const { email, password } = body as { email?: string; password?: string };
+      const { email, password, plan } = body as { email?: string; password?: string; plan?: string };
 
       // Validation
       if (!email || typeof email !== "string" || !email.includes("@")) {
@@ -19,6 +27,11 @@ export function authRoutes(db: Database): Hono {
       }
       if (!password || typeof password !== "string" || password.length < 8) {
         return c.json({ error: "Password must be at least 8 characters" }, 400);
+      }
+      if (plan !== undefined && plan !== null && plan !== "") {
+        if (typeof plan !== "string" || !VALID_PLANS.includes(plan)) {
+          return c.json({ error: "Invalid plan selected" }, 400);
+        }
       }
 
       // Check if user exists
@@ -62,8 +75,19 @@ export function authRoutes(db: Database): Hono {
         console.error("[auth] Welcome email failed:", err);
       });
 
+      const userResponse = { id, email: email.toLowerCase().trim(), credits: 25 };
+
+      // If a plan was selected, build the Stripe Checkout URL
+      let checkoutUrl: string | undefined;
+      if (plan && VALID_PLANS.includes(plan)) {
+        const base = STRIPE_LINKS[plan]!;
+        const separator = base.includes("?") ? "&" : "?";
+        checkoutUrl = `${base}${separator}client_reference_id=${encodeURIComponent(id)}`;
+      }
+
       return new Response(JSON.stringify({
-        user: { id, email: email.toLowerCase().trim(), credits: 25 },
+        user: userResponse,
+        ...(checkoutUrl ? { checkoutUrl } : {}),
       }), {
         status: 201,
         headers: {
