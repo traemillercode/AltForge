@@ -625,6 +625,7 @@ export default function JobDetailPage() {
           status: newResult.status as JobResult["status"],
           context_text: null,
           source_page_url: newResult.source_page_url,
+          file_size: null,
           created_at: new Date().toISOString(),
         },
       ]);
@@ -713,11 +714,17 @@ export default function JobDetailPage() {
 
   function handleExportSkippedCsv() {
     if (skipped.length === 0) return;
-    // Build CSV: image_url, source_page_url, existing_alt_text
-    const header = "image_url,source_page_url,existing_alt_text";
+    const formatFileSize = (bytes: number | null | undefined): string => {
+      if (bytes === null || bytes === undefined) return "N/A";
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    };
+    // Build CSV: image_url, source_page_url, existing_alt_text, file_size
+    const header = "image_url,source_page_url,existing_alt_text,file_size";
     const rows = skipped.map((s) => {
       const escapeField = (v: string | null) => `"${(v ?? "").replace(/"/g, '""')}"`;
-      return `${escapeField(s.image_url)},${escapeField(s.source_page_url)},${escapeField(s.existing_alt_text)}`;
+      return `${escapeField(s.image_url)},${escapeField(s.source_page_url)},${escapeField(s.existing_alt_text)},${formatFileSize(s.file_size)}`;
     });
     const csv = [header, ...rows].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });

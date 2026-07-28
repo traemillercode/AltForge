@@ -149,4 +149,24 @@ function initializeSchema(database: Database): void {
     database.run("PRAGMA foreign_keys=ON;");
     console.log("[db] Migrated jobs table to support 'images' job type");
   }
+
+  // Migration: add file_size to results table
+  const resultCols2 = database
+    .query(`PRAGMA table_info(results)`)
+    .all() as Array<{ name: string }>;
+  const hasFileSize = resultCols2.some((col) => col.name === "file_size");
+  if (!hasFileSize) {
+    database.run(`ALTER TABLE results ADD COLUMN file_size INTEGER;`);
+    console.log("[db] Migrated: added file_size to results");
+  }
+
+  // Migration: add file_size to skipped_results table
+  const skippedCols = database
+    .query(`PRAGMA table_info(skipped_results)`)
+    .all() as Array<{ name: string }>;
+  const hasSkippedFileSize = skippedCols.some((col) => col.name === "file_size");
+  if (!hasSkippedFileSize) {
+    database.run(`ALTER TABLE skipped_results ADD COLUMN file_size INTEGER;`);
+    console.log("[db] Migrated: added file_size to skipped_results");
+  }
 }

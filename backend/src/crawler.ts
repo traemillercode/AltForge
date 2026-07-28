@@ -13,12 +13,14 @@ export interface CrawlImage {
   altText: string | null;
   contextText: string;
   sourcePageUrl: string;
+  fileSize?: number;
 }
 
 export interface CrawlSkippedImage {
   url: string;
   altText: string | null;
   sourcePageUrl: string;
+  fileSize?: number;
 }
 
 export interface CrawlStats {
@@ -276,6 +278,34 @@ async function fetchText(url: string, timeoutMs: number): Promise<string | null>
 }
 
 /**
+ * Fetch the Content-Length of an image URL via a HEAD request.
+ * Returns the file size in bytes, or undefined if unavailable.
+ */
+async function fetchImageSize(url: string, timeoutMs: number): Promise<number | undefined> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const response = await fetch(url, {
+      method: "HEAD",
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "AltForge/1.0 (accessibility crawler; +https://altforge.app)",
+      },
+    });
+    clearTimeout(timeout);
+    if (!response.ok) return undefined;
+    const cl = response.headers.get("content-length");
+    if (cl) {
+      const parsed = parseInt(cl, 10);
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Main crawl function.
  * Crawls ONLY the exact URL provided — no sitemap discovery, no following links.
  * Respects robots.txt disallowed paths on the single URL.
@@ -346,15 +376,19 @@ export async function crawlSite(startUrl: string): Promise<CrawlResult> {
       if (seenUrls.has(normalizedUrl)) continue;
       seenUrls.add(normalizedUrl);
 
+      // Fetch file size via HEAD (non-blocking, swallow errors)
+      const fileSize = await fetchImageSize(img.url, 3000);
+
       // Check alt text quality
       if (isGoodAlt(img.altText)) {
         stats.imagesSkipped++;
         if (stats.skippedImages.length < 500) {
-          stats.skippedImages.push({ url: img.url, altText: img.altText, sourcePageUrl: img.sourcePageUrl });
+          stats.skippedImages.push({ url: img.url, altText: img.altText, sourcePageUrl: img.sourcePageUrl, fileSize });
         }
         continue;
       }
 
+      img.fileSize = fileSize;
       allImages.push(img);
       stats.imagesAdded++;
     }

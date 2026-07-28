@@ -34,6 +34,7 @@ export interface Result {
   status: "compliant" | "needs_review" | "decorative";
   context_text: string | null;
   source_page_url: string | null;
+  file_size: number | null;
   created_at: string;
 }
 
@@ -49,5 +50,6 @@ export interface SkippedResult {
   image_url: string;
   source_page_url: string | null;
   existing_alt_text: string | null;
+  file_size: number | null;
   created_at: string;
 }
