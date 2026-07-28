@@ -103,14 +103,14 @@ export interface ProcessJobResponse {
 }
 
 export const api = {
-  async signup(email: string, password: string): Promise<{ user: User }> {
+  async signup(email: string, password: string, plan?: string): Promise<{ user: User; checkoutUrl?: string }> {
     const res = await fetch(`${API_BASE}/auth/signup`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, ...(plan ? { plan } : {}) }),
     });
-    return handleResponse<{ user: User }>(res);
+    return handleResponse<{ user: User; checkoutUrl?: string }>(res);
   },
 
   async login(email: string, password: string): Promise<{ user: User }> {
