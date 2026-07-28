@@ -261,14 +261,12 @@ interface SkippedRowProps {
   index: number;
   isGenerating: boolean;
   isCopied: boolean;
-  anyGenerating: boolean;
   isSelected: boolean;
   onToggleSelect: (skipId: number) => void;
   onCopy: (altText: string | null, skipId: number) => void;
-  onGenerate: (skipId: number) => void;
 }
 
-function SkippedRow({ skipped, index, isGenerating, isCopied, anyGenerating, isSelected, onToggleSelect, onCopy, onGenerate }: SkippedRowProps) {
+function SkippedRow({ skipped, index, isGenerating, isCopied, isSelected, onToggleSelect, onCopy }: SkippedRowProps) {
   const [expandedAlt, setExpandedAlt] = useState(false);
   const [imgError, setImgError] = useState(false);
   const altText = skipped.existing_alt_text ?? "";
@@ -380,16 +378,20 @@ function SkippedRow({ skipped, index, isGenerating, isCopied, anyGenerating, isS
           )}
           {!isGenerating ? (
             <button
-              onClick={() => onGenerate(skipped.id)}
-              disabled={anyGenerating}
-              className="inline-flex items-center px-2 py-1 text-xs font-medium text-brand-700 bg-brand-50 border border-brand-200 rounded hover:bg-brand-100 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-brand-500 transition-colors"
-              title="Generate AI alt text (costs 1 credit)"
-              aria-label={`Generate alt text for image ${index + 1}`}
+              onClick={() => onToggleSelect(skipped.id)}
+              disabled={isSelected ? false : false}
+              className="inline-flex items-center px-2 py-1 text-xs font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded hover:bg-gray-100 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-brand-500 transition-colors"
+              title={isSelected ? "Deselect image" : "Add to batch selection"}
+              aria-label={isSelected ? `Deselect image ${index + 1}` : `Add image ${index + 1} to selection`}
             >
-              <svg className="h-3 w-3 mr-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              <svg className={`h-3 w-3 mr-0.5 ${isSelected ? "text-brand-600" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                {isSelected ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                )}
               </svg>
-              Generate
+              {isSelected ? "Selected" : "Add to selection"}
             </button>
           ) : (
             <span className="inline-flex items-center text-xs text-gray-500" role="status">
@@ -612,76 +614,6 @@ export default function JobDetailPage() {
     }
   }
 
-  async function handleGenerateSkipped(skipId: number) {
-    if (!id || generatingSkippedId) return;
-    const skipEntry = skipped.find((s) => s.id === skipId);
-    setGeneratingSkippedId(skipId);
-
-    // Show progress modal for single image
-    setGenProgress({
-      isGenerating: true,
-      current: 0,
-      total: 1,
-      currentImageUrl: skipEntry?.image_url ?? "",
-      errors: [],
-    });
-
-    try {
-      const newResult = await api.generateSkipped(id, skipId);
-      // Add the new result to the results list
-      setResults((prev) => [
-        ...prev,
-        {
-          id: newResult.id,
-          job_id: newResult.job_id,
-          image_url: newResult.image_url,
-          alt_text: newResult.alt_text,
-          char_count: newResult.char_count,
-          status: newResult.status as JobResult["status"],
-          context_text: null,
-          source_page_url: newResult.source_page_url,
-          file_size: null,
-          created_at: new Date().toISOString(),
-        },
-      ]);
-      // Remove from skipped list
-      setSkipped((prev) => {
-        const next = prev.filter((s) => s.id !== skipId);
-        // If the current page is now empty but there are more pages, go back one
-        if (next.length === 0 && skippedPage > 1 && id) {
-          loadSkipped(id, skippedPage - 1);
-        }
-        return next;
-      });
-      await refreshUser();
-
-      // Update progress to complete
-      setGenProgress((prev) =>
-        prev
-          ? { ...prev, current: 1, isGenerating: false }
-          : null
-      );
-    } catch (err) {
-      const errorMsg =
-        err instanceof ApiClientError
-          ? err.message
-          : "Generation failed. Please try again.";
-
-      setGenProgress((prev) =>
-        prev
-          ? {
-              ...prev,
-              current: 1,
-              isGenerating: false,
-              errors: [...prev.errors, errorMsg],
-            }
-          : null
-      );
-    } finally {
-      setGeneratingSkippedId(null);
-    }
-  }
-
   function handleToggleSkippedSelect(skipId: number) {
     setSelectedSkippedIds((prev) => {
       const next = new Set(prev);
@@ -735,6 +667,7 @@ export default function JobDetailPage() {
     let index = 0;
     for (const skipId of idsArray) {
       const skipEntry = skipped.find((s) => s.id === skipId);
+      setGeneratingSkippedId(skipId);
 
       // Update progress with current image thumbnail
       setGenProgress((prev) =>
@@ -796,6 +729,7 @@ export default function JobDetailPage() {
     );
 
     await refreshUser();
+    setGeneratingSkippedId(null);
     // Clear selection
     setSelectedSkippedIds(new Set());
     // Refresh data
@@ -1366,11 +1300,9 @@ export default function JobDetailPage() {
                         index={idx}
                         isGenerating={generatingSkippedId === s.id}
                         isCopied={copiedId === s.id}
-                        anyGenerating={generatingSkippedId !== null || batchGenerating}
                         isSelected={selectedSkippedIds.has(s.id)}
                         onToggleSelect={handleToggleSkippedSelect}
                         onCopy={handleCopySkipped}
-                        onGenerate={handleGenerateSkipped}
                       />
                     ))}
                   </tbody>

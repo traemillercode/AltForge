@@ -219,7 +219,7 @@ export default function UploadPage() {
       setCsvUploading(true); setCsvError(null);
       const result = await api.uploadCsv(csvFile);
       setCsvResult(result);
-      await loadJobs();
+      navigate(`/jobs/${result.job.id}`);
     } catch (err) {
       if (err instanceof ApiClientError) setCsvError(err.message);
       else setCsvError("Upload failed. Please try again.");
@@ -258,7 +258,7 @@ export default function UploadPage() {
       setCrawlResult(data);
       setCrawledPages(data.stats?.crawledPages || []);
       setSkippedImages(data.stats?.skippedImages || []);
-      await loadJobs();
+      navigate(`/jobs/${data.job.id}`);
     } catch (err) {
       if (err instanceof ApiClientError) setCrawlError(err.message);
       else setCrawlError("Crawl failed. Please try again.");
@@ -344,7 +344,7 @@ export default function UploadPage() {
       setImageUploading(true); setImageError(null);
       const result = await api.uploadImages(filesToUpload);
       setImageResult(result);
-      await loadJobs();
+      navigate(`/jobs/${result.job.id}`);
     } catch (err) {
       if (err instanceof ApiClientError) setImageError(err.message);
       else setImageError("Upload failed. Please try again.");

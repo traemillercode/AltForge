@@ -937,8 +937,8 @@ export function jobsRoutes(db: Database): Hono {
     const moveToResults = db.transaction(() => {
       db.run(
         `INSERT INTO results (id, job_id, image_url, alt_text, char_count, status, source_page_url, file_size, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [newResultId, jobId, skippedImageUrl, altText, charCount, status, skippedSourcePageUrl, now]
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [newResultId, jobId, skippedImageUrl, altText, charCount, status, skippedSourcePageUrl, null, now]
       );
       db.run("DELETE FROM skipped_results WHERE id = ?", [skippedId]);
     });
@@ -1058,8 +1058,8 @@ export function jobsRoutes(db: Database): Hono {
         const moveToResults = db.transaction(() => {
           db.run(
             `INSERT INTO results (id, job_id, image_url, alt_text, char_count, status, source_page_url, file_size, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [newResultId, jobId, skippedImageUrl, altText, charCount, status, skippedSourcePageUrl, now]
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [newResultId, jobId, skippedImageUrl, altText, charCount, status, skippedSourcePageUrl, null, now]
           );
           db.run("DELETE FROM skipped_results WHERE id = ?", [skippedId]);
         });
