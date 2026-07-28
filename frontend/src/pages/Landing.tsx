@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import FreeSample from "../components/FreeSample";
 
 export default function LandingPage() {
   return (
@@ -28,6 +29,12 @@ export default function LandingPage() {
               >
                 Start free — 25 credits, no card required
               </Link>
+              <a
+                href="#free-sample"
+                className="inline-flex items-center justify-center px-8 py-4 border border-gray-300 text-lg font-semibold rounded-lg shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-brand-500 focus-visible:outline-offset-2 transition-colors"
+              >
+                Try the demo
+              </a>
               <Link
                 to="/pricing"
                 className="inline-flex items-center justify-center px-8 py-4 border border-gray-300 text-lg font-semibold rounded-lg shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-brand-500 focus-visible:outline-offset-2 transition-colors"
@@ -41,6 +48,11 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      {/* Free Sample */}
+      <div id="free-sample">
+        <FreeSample />
+      </div>
 
       {/* Features */}
       <section className="bg-gray-50 py-16 md:py-20" aria-labelledby="features-heading">
