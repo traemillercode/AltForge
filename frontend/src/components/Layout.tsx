@@ -42,9 +42,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div className="flex justify-between items-center h-16">
             <Link
               to={user ? "/dashboard" : "/"}
-              className="text-xl font-bold text-brand-700 hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-brand-500 focus-visible:rounded"
+              className="flex items-center gap-2.5 text-xl font-bold text-brand-700 hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-brand-500 focus-visible:rounded"
               aria-label="AltForge home"
             >
+              <img src="/logo.svg" alt="" className="h-8 w-8" aria-hidden="true" />
               AltForge
             </Link>
 
