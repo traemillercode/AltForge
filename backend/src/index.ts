@@ -82,9 +82,12 @@ if (isProduction) {
   
   // Serve static assets (JS, CSS, images, etc.)
   app.use("/assets/*", serveStatic({ root: frontendDist }));
-  app.use("/*.svg", serveStatic({ root: frontendDist }));
-  app.use("/*.png", serveStatic({ root: frontendDist }));
-  app.use("/*.ico", serveStatic({ root: frontendDist }));
+  
+  // Serve image/favicon files explicitly
+  app.get("/favicon.svg", serveStatic({ path: "/favicon.svg", root: frontendDist }));
+  app.get("/favicon.png", serveStatic({ path: "/favicon.png", root: frontendDist }));
+  app.get("/logo.svg", serveStatic({ path: "/logo.svg", root: frontendDist }));
+  app.get("/logo.png", serveStatic({ path: "/logo.png", root: frontendDist }));
   
   // For SPA routing, serve index.html for all non-API, non-asset routes
   app.get("/*", serveStatic({ 
