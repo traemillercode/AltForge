@@ -298,6 +298,15 @@ export const api = {
   },
 };
 
+export interface WcagCriteriaBreakdown {
+  name: string;
+  level: "A" | "AA" | "AAA";
+  pass?: number;
+  fail?: number;
+  flagged?: number;
+  description: string;
+}
+
 export interface JobReportData {
   job: {
     id: string;
@@ -311,9 +320,12 @@ export interface JobReportData {
     completed_at: string | null;
   };
   totalImages: number;
-  results: JobResult[];
-  skipped: SkippedResult[];
+  results: (JobResult & { wcag_criteria?: string[]; image_may_contain_text?: boolean })[];
+  skipped: (SkippedResult & { needs_review?: boolean; wcag_criteria?: string[] })[];
   creditUsage: number;
+  overallGrade: "Pass" | "Needs Improvement" | "Fails";
+  wcagLevel: "A" | "AA" | "AAA";
+  complianceRate: number;
   compliance: {
     compliant: number;
     compliant_long: number;
@@ -322,4 +334,5 @@ export interface JobReportData {
     total: number;
     passRate: number;
   };
+  wcag_breakdown: Record<string, WcagCriteriaBreakdown>;
 }
