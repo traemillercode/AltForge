@@ -15,7 +15,7 @@ export interface UserRow {
 export interface Job {
   id: string;
   user_id: string;
-  type: "csv" | "crawl";
+  type: "csv" | "crawl" | "images";
   status: "pending" | "processing" | "completed" | "failed";
   total_images: number;
   processed_images: number;
