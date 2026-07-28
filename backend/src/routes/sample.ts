@@ -7,6 +7,8 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per file
 const RATE_LIMIT = 5; // requests per window
 const RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
+const TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+
 // In-memory rate limiter: IP -> { count, windowStart }
 const rateLimitMap = new Map<string, { count: number; windowStart: number }>();
 
@@ -58,6 +60,52 @@ function checkRateLimit(c: Context): { allowed: boolean; retryAfter?: number } {
   return { allowed: true };
 }
 
+async function verifyTurnstile(token: string): Promise<boolean> {
+  const secretKey = process.env.TURNSTILE_SECRET_KEY;
+  
+  // If no secret key is configured, skip verification (graceful degradation for dev)
+  if (!secretKey) {
+    console.warn("[sample] TURNSTILE_SECRET_KEY not set — skipping Turnstile verification");
+    return true;
+  }
+
+  try {
+    const formData = new URLSearchParams();
+    formData.append("secret", secretKey);
+    formData.append("response", token);
+
+    const res = await fetch(TURNSTILE_VERIFY_URL, {
+      method: "POST",
+      body: formData,
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+    });
+
+    if (!res.ok) {
+      console.error("[sample] Turnstile verification API error:", res.status, res.statusText);
+      return false;
+    }
+
+    const data = await res.json() as {
+      success: boolean;
+      "error-codes"?: string[];
+    };
+
+    if (!data.success) {
+      console.warn(
+        "[sample] Turnstile verification failed:",
+        data["error-codes"]?.join(", ") ?? "unknown error"
+      );
+    }
+
+    return data.success;
+  } catch (err) {
+    console.error("[sample] Turnstile verification network error:", err);
+    return false;
+  }
+}
+
 const ALLOWED_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -88,7 +136,7 @@ export function sampleRoutes(): Hono {
   const router = new Hono();
 
   router.post("/", async (c) => {
-    // Rate limit check
+    // Rate limit check (first layer of protection)
     const rateLimit = checkRateLimit(c);
     if (!rateLimit.allowed) {
       c.header("Retry-After", String(rateLimit.retryAfter));
@@ -100,7 +148,7 @@ export function sampleRoutes(): Hono {
       );
     }
 
-    // Validate API key is configured
+    // Validate API key is configured (early check)
     let apiKey: string;
     try {
       apiKey = requireApiKey();
@@ -108,15 +156,46 @@ export function sampleRoutes(): Hono {
       return c.json({ error: (err as Error).message }, 500);
     }
 
-    // Parse multipart form data
+    // Parse multipart form data (single call — body stream can only be consumed once)
     const formData = await c.req.formData().catch(() => null);
     if (!formData) {
       return c.json({ error: "Request must be multipart/form-data with image files" }, 400);
     }
 
-    // Collect files
+    // Extract Turnstile token from form data (if present)
+    const turnstileTokenField = formData.get("turnstileToken");
+    const turnstileToken: string | null =
+      turnstileTokenField && typeof turnstileTokenField === "string"
+        ? turnstileTokenField
+        : null;
+
+    const secretKeyConfigured = !!process.env.TURNSTILE_SECRET_KEY;
+
+    // If Turnstile is configured but no token was found, reject
+    if (secretKeyConfigured && !turnstileToken) {
+      return c.json(
+        { error: "Security check required. Please complete the CAPTCHA." },
+        400
+      );
+    }
+
+    // Verify the token if we have one
+    if (turnstileToken) {
+      const verified = await verifyTurnstile(turnstileToken);
+      if (!verified) {
+        return c.json(
+          { error: "Security check failed. Please try again." },
+          400
+        );
+      }
+    }
+
+    // Collect files (skip the turnstileToken field)
     const files: File[] = [];
-    for (const [, value] of formData.entries()) {
+    for (const [key, value] of formData.entries()) {
+      // Skip the turnstile token field
+      if (key === "turnstileToken") continue;
+      
       // Hono on Bun: formData values may be File objects
       if (value && typeof value === "object" && "arrayBuffer" in value && "name" in value) {
         files.push(value as unknown as File);

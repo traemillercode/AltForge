@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Link } from "react-router-dom";
 
 interface SampleResult {
@@ -15,6 +15,28 @@ type ProcessingState = "idle" | "uploading" | "processing" | "complete" | "error
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const MAX_FILES = 5;
 
+// Turnstile global type
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (
+        container: string | HTMLElement,
+        options: {
+          sitekey: string;
+          callback: (token: string) => void;
+          "error-callback"?: () => void;
+          "expired-callback"?: () => void;
+          theme?: "light" | "dark" | "auto";
+          size?: "normal" | "compact";
+        }
+      ) => string;
+      reset: (widgetId: string) => void;
+      remove: (widgetId: string) => void;
+    };
+    __turnstileLoaded?: boolean;
+  }
+}
+
 export default function FreeSample() {
   const [files, setFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
@@ -24,31 +46,157 @@ export default function FreeSample() {
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const validateAndAddFiles = useCallback((incoming: File[]) => {
-    setError(null);
+  // Turnstile state
+  const [turnstileLoaded, setTurnstileLoaded] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [turnstileError, setTurnstileError] = useState(false);
+  const turnstileContainerRef = useRef<HTMLDivElement>(null);
+  const turnstileWidgetId = useRef<string | null>(null);
 
-    // Filter to allowed types
-    const valid = incoming.filter((f) => ALLOWED_TYPES.includes(f.type));
+  const siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
+  const hasTurnstile = !!siteKey;
 
-    if (valid.length < incoming.length) {
-      setError("Some files were skipped — only JPEG, PNG, WebP, and GIF are accepted.");
-    }
-
-    // Check size limits
-    const oversized = valid.find((f) => f.size > 10 * 1024 * 1024);
-    if (oversized) {
-      setError(
-        `"${oversized.name}" exceeds the 10MB file size limit.`
-      );
+  // Load Turnstile script
+  useEffect(() => {
+    if (!hasTurnstile) {
+      // No site key configured — skip CAPTCHA entirely
+      setTurnstileLoaded(true);
       return;
     }
 
-    // Enforce 5-image max
-    const combined = [...files, ...valid].slice(0, MAX_FILES);
-    setFiles(combined);
-    setResults([]);
-    setState("idle");
-  }, [files]);
+    // If script already loaded by another component
+    if (window.turnstile && window.__turnstileLoaded) {
+      setTurnstileLoaded(true);
+      return;
+    }
+
+    let scriptElement: HTMLScriptElement | null = null;
+
+    // Listen for explicit load
+    const onLoad = () => {
+      window.__turnstileLoaded = true;
+      setTurnstileLoaded(true);
+    };
+
+    // Check if script tag already exists
+    const existing = document.querySelector(
+      'script[src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"]'
+    );
+    if (existing) {
+      if (window.turnstile) {
+        onLoad();
+      } else {
+        existing.addEventListener("load", onLoad);
+      }
+    } else {
+      scriptElement = document.createElement("script");
+      scriptElement.src =
+        "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+      scriptElement.async = true;
+      scriptElement.defer = true;
+      scriptElement.addEventListener("load", onLoad);
+      document.head.appendChild(scriptElement);
+    }
+
+    return () => {
+      if (scriptElement) {
+        scriptElement.removeEventListener("load", onLoad);
+      }
+    };
+  }, [hasTurnstile]);
+
+  // Render Turnstile widget once script is loaded and container is ready
+  useEffect(() => {
+    if (
+      !hasTurnstile ||
+      !turnstileLoaded ||
+      !window.turnstile ||
+      !turnstileContainerRef.current
+    ) {
+      return;
+    }
+
+    // Don't re-render if already rendered
+    if (turnstileWidgetId.current) {
+      return;
+    }
+
+    try {
+      const id = window.turnstile.render(turnstileContainerRef.current, {
+        sitekey: siteKey,
+        callback: (token: string) => {
+          setTurnstileToken(token);
+          setTurnstileError(false);
+        },
+        "error-callback": () => {
+          setTurnstileToken(null);
+          setTurnstileError(true);
+        },
+        "expired-callback": () => {
+          setTurnstileToken(null);
+        },
+        theme: "light",
+        size: "normal",
+      });
+      turnstileWidgetId.current = id;
+    } catch {
+      setTurnstileError(true);
+    }
+
+    return () => {
+      if (turnstileWidgetId.current && window.turnstile) {
+        try {
+          window.turnstile.remove(turnstileWidgetId.current);
+        } catch {
+          // ignore
+        }
+        turnstileWidgetId.current = null;
+      }
+    };
+  }, [hasTurnstile, turnstileLoaded, siteKey]);
+
+  // Reset Turnstile when files change or when starting over
+  const resetTurnstile = useCallback(() => {
+    if (turnstileWidgetId.current && window.turnstile) {
+      try {
+        window.turnstile.reset(turnstileWidgetId.current);
+      } catch {
+        // ignore
+      }
+    }
+    setTurnstileToken(null);
+    setTurnstileError(false);
+  }, []);
+
+  const validateAndAddFiles = useCallback(
+    (incoming: File[]) => {
+      setError(null);
+
+      // Filter to allowed types
+      const valid = incoming.filter((f) => ALLOWED_TYPES.includes(f.type));
+
+      if (valid.length < incoming.length) {
+        setError(
+          "Some files were skipped — only JPEG, PNG, WebP, and GIF are accepted."
+        );
+      }
+
+      // Check size limits
+      const oversized = valid.find((f) => f.size > 10 * 1024 * 1024);
+      if (oversized) {
+        setError(`"${oversized.name}" exceeds the 10MB file size limit.`);
+        return;
+      }
+
+      // Enforce 5-image max
+      const combined = [...files, ...valid].slice(0, MAX_FILES);
+      setFiles(combined);
+      setResults([]);
+      setState("idle");
+      resetTurnstile();
+    },
+    [files, resetTurnstile]
+  );
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -74,7 +222,6 @@ export default function FreeSample() {
     if (e.target.files) {
       validateAndAddFiles(Array.from(e.target.files));
     }
-    // Reset input so re-selecting the same file works
     e.target.value = "";
   };
 
@@ -83,10 +230,18 @@ export default function FreeSample() {
     setResults([]);
     setState("idle");
     setError(null);
+    resetTurnstile();
+  };
+
+  const canSubmit = (): boolean => {
+    if (files.length === 0) return false;
+    // If Turnstile is configured, require a token
+    if (hasTurnstile && !turnstileToken) return false;
+    return true;
   };
 
   const handleGenerate = async () => {
-    if (files.length === 0) return;
+    if (!canSubmit()) return;
 
     setState("uploading");
     setError(null);
@@ -96,6 +251,10 @@ export default function FreeSample() {
       const formData = new FormData();
       for (const file of files) {
         formData.append("images", file);
+      }
+      // Append Turnstile token if available
+      if (turnstileToken) {
+        formData.append("turnstileToken", turnstileToken);
       }
 
       setState("processing");
@@ -107,7 +266,17 @@ export default function FreeSample() {
       });
 
       if (!res.ok) {
-        const body = await res.json().catch(() => ({ error: "Request failed" }));
+        const body = await res
+          .json()
+          .catch(() => ({ error: "Request failed" }));
+        // If CAPTCHA failed, reset it so user can retry
+        if (
+          body.error &&
+          (body.error.includes("Security check") ||
+            body.error.includes("CAPTCHA"))
+        ) {
+          resetTurnstile();
+        }
         throw new Error(body.error || `Server error (${res.status})`);
       }
 
@@ -116,7 +285,11 @@ export default function FreeSample() {
       setState("complete");
       setProgress({ current: data.results?.length ?? 0, total: files.length });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Something went wrong. Please try again."
+      );
       setState("error");
     }
   };
@@ -127,9 +300,11 @@ export default function FreeSample() {
     setState("idle");
     setError(null);
     setProgress({ current: 0, total: 0 });
+    resetTurnstile();
   };
 
   const isProcessing = state === "uploading" || state === "processing";
+  const isTurnstileRequired = hasTurnstile && !turnstileToken;
 
   return (
     <section
@@ -145,8 +320,8 @@ export default function FreeSample() {
             Try it free — no signup required
           </h2>
           <p className="mt-3 text-gray-600">
-            Upload 1–5 images and see AI-generated alt text in seconds.
-            Export and batch processing available after signup.
+            Upload 1–5 images and see AI-generated alt text in seconds. Export
+            and batch processing available after signup.
           </p>
         </div>
 
@@ -169,9 +344,10 @@ export default function FreeSample() {
             className={`
               border-2 border-dashed rounded-xl p-12 text-center cursor-pointer
               transition-colors focus-visible:outline-2 focus-visible:outline-brand-500 focus-visible:outline-offset-2
-              ${dragOver
-                ? "border-brand-500 bg-brand-50"
-                : "border-gray-300 hover:border-brand-400 bg-gray-50"
+              ${
+                dragOver
+                  ? "border-brand-500 bg-brand-50"
+                  : "border-gray-300 hover:border-brand-400 bg-gray-50"
               }
             `}
           >
@@ -264,19 +440,81 @@ export default function FreeSample() {
                     className="ml-3 text-gray-400 hover:text-red-500 focus-visible:outline-2 focus-visible:outline-red-500 rounded p-1 disabled:opacity-50"
                     aria-label={`Remove ${file.name}`}
                   >
-                    <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <svg
+                      aria-hidden="true"
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
                     </svg>
                   </button>
                 </li>
               ))}
             </ul>
 
+            {/* Turnstile CAPTCHA widget */}
+            {hasTurnstile && (
+              <div className="flex flex-col items-start gap-2">
+                {!turnstileLoaded && (
+                  <div
+                    className="flex items-center gap-2 text-sm text-gray-500"
+                    role="status"
+                  >
+                    <svg
+                      aria-hidden="true"
+                      className="animate-spin h-4 w-4 text-gray-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
+                    </svg>
+                    Loading security check...
+                  </div>
+                )}
+                <div
+                  ref={turnstileContainerRef}
+                  className={!turnstileLoaded ? "hidden" : ""}
+                />
+                {turnstileError && (
+                  <p className="text-sm text-red-600" role="alert">
+                    Security check failed to load. Please refresh the page and
+                    try again.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* CAPTCHA hint when Turnstile configured but not solved */}
+            {isTurnstileRequired && turnstileLoaded && !turnstileError && (
+              <p className="text-sm text-gray-500">
+                Please complete the security check above to continue.
+              </p>
+            )}
+
             {/* Action buttons */}
             <div className="flex flex-col sm:flex-row gap-3 pt-2">
               <button
                 onClick={handleGenerate}
-                disabled={isProcessing}
+                disabled={isProcessing || !canSubmit()}
                 className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-semibold rounded-lg shadow-md text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-brand-500 focus-visible:outline-offset-2 transition-colors"
               >
                 {isProcessing ? (
@@ -287,8 +525,19 @@ export default function FreeSample() {
                       fill="none"
                       viewBox="0 0 24 24"
                     >
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
                     </svg>
                     Processing...
                   </>
@@ -309,12 +558,21 @@ export default function FreeSample() {
             {isProcessing && (
               <div className="mt-4" role="status" aria-live="polite">
                 <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <span>Processing image {progress.current + 1} of {progress.total}...</span>
+                  <span>
+                    Processing image {progress.current + 1} of {progress.total}
+                    ...
+                  </span>
                 </div>
                 <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
                   <div
                     className="bg-brand-600 h-2 rounded-full transition-all duration-500"
-                    style={{ width: `${progress.total > 0 ? ((progress.current) / progress.total) * 100 : 0}%` }}
+                    style={{
+                      width: `${
+                        progress.total > 0
+                          ? (progress.current / progress.total) * 100
+                          : 0
+                      }%`,
+                    }}
                     role="progressbar"
                     aria-valuenow={progress.current}
                     aria-valuemin={0}
@@ -333,8 +591,17 @@ export default function FreeSample() {
             role="alert"
           >
             <div className="flex items-start gap-3">
-              <svg aria-hidden="true" className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              <svg
+                aria-hidden="true"
+                className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                  clipRule="evenodd"
+                />
               </svg>
               <div>
                 <p className="text-sm font-medium text-red-800">{error}</p>
@@ -353,10 +620,15 @@ export default function FreeSample() {
 
         {/* Results */}
         {state === "complete" && results.length > 0 && (
-          <div className="mt-6 space-y-6" aria-live="polite" aria-label="Generated alt text results">
+          <div
+            className="mt-6 space-y-6"
+            aria-live="polite"
+            aria-label="Generated alt text results"
+          >
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">
-                Results ({results.length} image{results.length !== 1 ? "s" : ""})
+                Results ({results.length} image
+                {results.length !== 1 ? "s" : ""})
               </h3>
               <button
                 onClick={handleReset}
@@ -395,8 +667,17 @@ export default function FreeSample() {
                       </span>
                       {result.status === "compliant" && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          <svg aria-hidden="true" className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          <svg
+                            aria-hidden="true"
+                            className="w-3 h-3"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                              clipRule="evenodd"
+                            />
                           </svg>
                           Compliant
                         </span>
@@ -423,8 +704,12 @@ export default function FreeSample() {
                     ) : result.status === "decorative" ? (
                       <div className="bg-blue-50 rounded-lg p-3">
                         <p className="text-sm text-blue-800">
-                          This image appears to be purely decorative. No alt text needed — use an empty{" "}
-                          <code className="bg-blue-100 px-1 rounded text-xs">alt=""</code> attribute.
+                          This image appears to be purely decorative. No alt
+                          text needed — use an empty{" "}
+                          <code className="bg-blue-100 px-1 rounded text-xs">
+                            alt=""
+                          </code>{" "}
+                          attribute.
                         </p>
                       </div>
                     ) : (
@@ -442,20 +727,98 @@ export default function FreeSample() {
               </div>
             ))}
 
-            {/* Signup CTA */}
-            <div className="bg-brand-50 border border-brand-200 rounded-xl p-6 text-center">
-              <h3 className="text-lg font-semibold text-brand-900">
-                Ready to process hundreds of images?
-              </h3>
-              <p className="mt-2 text-sm text-brand-700">
-                Sign up to get 25 free credits, batch upload via CSV, crawl entire websites, and export results.
-              </p>
-              <Link
-                to="/signup"
-                className="mt-4 inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-semibold rounded-lg shadow-sm text-white bg-brand-600 hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-brand-500 focus-visible:outline-offset-2 transition-colors"
-              >
-                Sign up free — 25 credits included
-              </Link>
+            {/* Locked export section + signup CTA */}
+            <div className="relative border border-gray-200 rounded-xl p-6 bg-gray-50">
+              {/* Locked overlay */}
+              <div className="flex flex-col items-center gap-4">
+                {/* Lock icon header */}
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                    <svg
+                      aria-hidden="true"
+                      className="w-5 h-5 text-amber-600"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  </div>
+                  <h4 className="text-base font-semibold text-gray-800">
+                    Export locked — sign up to unlock
+                  </h4>
+                </div>
+
+                {/* Blurred export buttons */}
+                <div className="flex flex-wrap items-center gap-3 opacity-25 pointer-events-none select-none">
+                  {/* CSV export button (blurred) */}
+                  <span className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 shadow-sm">
+                    <svg
+                      aria-hidden="true"
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      />
+                    </svg>
+                    Export CSV
+                  </span>
+
+                  {/* HTML export button (blurred) */}
+                  <span className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 shadow-sm">
+                    <svg
+                      aria-hidden="true"
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"
+                      />
+                    </svg>
+                    Export HTML
+                  </span>
+                </div>
+
+                {/* CTA text */}
+                <p className="text-sm text-gray-600 text-center max-w-md">
+                  Sign up free to unlock CSV and HTML export, plus get 25 more
+                  credits for batch processing.
+                </p>
+
+                {/* Signup button */}
+                <Link
+                  to="/signup"
+                  className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-semibold rounded-lg shadow-md text-white bg-brand-600 hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-brand-500 focus-visible:outline-offset-2 transition-colors"
+                >
+                  <svg
+                    aria-hidden="true"
+                    className="w-5 h-5 mr-2"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path d="M8 9a3 3 0 100-6 3 3 0 000 6zM8 11a6 6 0 016 6H2a6 6 0 016-6zM16 7a1 1 0 10-2 0v1h-1a1 1 0 100 2h1v1a1 1 0 102 0v-1h1a1 1 0 100-2h-1V7z" />
+                  </svg>
+                  Sign up free — 25 credits included
+                </Link>
+
+                <p className="text-xs text-gray-400">
+                  No credit card required
+                </p>
+              </div>
             </div>
           </div>
         )}
