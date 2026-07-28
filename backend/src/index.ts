@@ -7,6 +7,7 @@ import { jobsRoutes } from "./routes/jobs.js";
 import { creditsRoutes } from "./routes/credits.js";
 import { sampleRoutes } from "./routes/sample.js";
 import { webhookRoutes } from "./routes/webhooks.js";
+import { startCronJobs } from "./cron.js";
 
 const app = new Hono();
 
@@ -21,6 +22,9 @@ app.use("/*", cors({
 
 // Initialize database
 const db = initDatabase();
+
+// Start drip email cron jobs (non-blocking)
+startCronJobs(db);
 
 // Health check
 app.get("/api/health", (c) => c.json({ status: "ok", timestamp: new Date().toISOString() }));

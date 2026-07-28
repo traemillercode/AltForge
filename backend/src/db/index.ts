@@ -69,10 +69,20 @@ function initializeSchema(database: Database): void {
       );
     `);
 
+  database.run(`
+    CREATE TABLE IF NOT EXISTS drip_emails (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      drip_type TEXT NOT NULL,
+      sent_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+
   database.run(`CREATE INDEX IF NOT EXISTS idx_jobs_user_id ON jobs(user_id);`);
   database.run(`CREATE INDEX IF NOT EXISTS idx_results_job_id ON results(job_id);`);
   database.run(`CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);`);
   database.run(`CREATE INDEX IF NOT EXISTS idx_transactions_stripe_ref ON transactions(stripe_reference);`);
+  database.run(`CREATE INDEX IF NOT EXISTS idx_drip_emails_user_type ON drip_emails(user_id, drip_type);`);
 
   // Migration: add stripe_customer_id to users table
   const userColumns = database
