@@ -31,7 +31,7 @@ export interface User {
 }
 
 // Job types
-export type JobType = "csv" | "crawl";
+export type JobType = "csv" | "crawl" | "images";
 export type JobStatus = "pending" | "processing" | "completed" | "failed";
 
 export interface Job {
@@ -66,6 +66,17 @@ export interface CsvUploadResponse {
     validUrls: number;
     invalidCount: number;
     totalRows: number;
+    costEstimate: number;
+  };
+}
+
+export interface ImageUploadResponse {
+  job: Job;
+  results: JobResult[];
+  stats: {
+    imagesFound: number;
+    invalidCount: number;
+    totalSizeBytes: number;
     costEstimate: number;
   };
 }
@@ -126,6 +137,19 @@ export const api = {
       body: formData,
     });
     return handleResponse<CsvUploadResponse>(res);
+  },
+
+  async uploadImages(files: File[]): Promise<ImageUploadResponse> {
+    const formData = new FormData();
+    for (const f of files) {
+      formData.append("images", f);
+    }
+    const res = await fetch(`${API_BASE}/jobs/images`, {
+      method: "POST",
+      credentials: "include",
+      body: formData,
+    });
+    return handleResponse<ImageUploadResponse>(res);
   },
 
   async getJobs(): Promise<{ jobs: Job[] }> {

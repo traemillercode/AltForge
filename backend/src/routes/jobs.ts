@@ -2,12 +2,24 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Database } from "bun:sqlite";
 import Papa from "papaparse";
+import AdmZip from "adm-zip";
 import { authMiddleware } from "../middleware/auth.js";
 import { crawlSite } from "../crawler.js";
 import { generateAltText, requireApiKey } from "../ai.js";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_TOTAL_UPLOAD = 50 * 1024 * 1024; // 50MB
+const MAX_IMAGES = 500;
+const MAX_FILES = 50;
 const MAX_URLS = 5000;
+
+const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
+const IMAGE_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
 
 const URL_COLUMN_NAMES = ["url", "image_url", "image", "src", "link", "img_url", "imageurl"];
 
@@ -36,6 +48,13 @@ function isValidUrl(str: string): boolean {
   } catch {
     return false;
   }
+}
+
+function isImageFile(name: string, type: string): boolean {
+  // Check by MIME type first, then extension
+  if (IMAGE_MIME_TYPES.has(type)) return true;
+  const ext = name.toLowerCase().substring(name.lastIndexOf("."));
+  return IMAGE_EXTENSIONS.has(ext);
 }
 
 export function jobsRoutes(db: Database): Hono {
@@ -271,6 +290,192 @@ export function jobsRoutes(db: Database): Hono {
         imagesAdded: crawlResult.stats.imagesAdded,
         costEstimate: crawlResult.stats.imagesAdded,
         errors: crawlResult.errors.slice(0, 10),
+      },
+    }, 201);
+  });
+
+  // POST /api/jobs/images — direct image upload (multi-file or zip)
+  router.post("/images", async (c) => {
+    const userId = getUserId(c);
+
+    const formData = await c.req.formData();
+
+    // Collect all "images" fields (multi-file) and "file" field (zip)
+    const imageFiles: File[] = [];
+    let zipFile: File | null = null;
+    let totalSize = 0;
+
+    for (const [, value] of formData.entries()) {
+      // FormDataEntryValue can be string or File; check for File-like objects
+      if (value && typeof value === "object" && "name" in value && "arrayBuffer" in value) {
+        const file = value as unknown as File;
+        if (file.name.toLowerCase().endsWith(".zip")) {
+          zipFile = file;
+        } else {
+          imageFiles.push(file);
+        }
+        totalSize += file.size;
+      }
+    }
+
+    // Must have either image files or a zip
+    if (imageFiles.length === 0 && !zipFile) {
+      return c.json({ error: "No image files or zip file provided. Upload images (.jpg, .png, .webp, .gif) or a .zip file." }, 400);
+    }
+
+    // Validate total size
+    if (totalSize > MAX_TOTAL_UPLOAD) {
+      return c.json({ error: `Total upload size ${(totalSize / 1024 / 1024).toFixed(1)}MB exceeds maximum ${MAX_TOTAL_UPLOAD / 1024 / 1024}MB` }, 400);
+    }
+
+    const extractedImages: { name: string; data: Buffer; size: number }[] = [];
+    let invalidCount = 0;
+
+    if (zipFile) {
+      // Validate zip file
+      if (zipFile.size > MAX_TOTAL_UPLOAD) {
+        return c.json({
+          error: `Zip file size ${(zipFile.size / 1024 / 1024).toFixed(1)}MB exceeds maximum ${MAX_TOTAL_UPLOAD / 1024 / 1024}MB`,
+        }, 400);
+      }
+
+      // Extract zip in memory
+      let zip: AdmZip;
+      try {
+        const zipBuffer = Buffer.from(await zipFile.arrayBuffer());
+        zip = new AdmZip(zipBuffer);
+      } catch {
+        return c.json({ error: "Could not read zip file. Ensure it's a valid .zip archive." }, 400);
+      }
+
+      const entries = zip.getEntries();
+      const seenNames = new Set<string>();
+
+      for (const entry of entries) {
+        if (entry.isDirectory) continue;
+
+        const name = entry.entryName.split("/").pop() || entry.entryName;
+        const lowerName = name.toLowerCase();
+
+        // Check extension
+        const ext = lowerName.substring(lowerName.lastIndexOf("."));
+        if (!IMAGE_EXTENSIONS.has(ext)) {
+          invalidCount++;
+          continue;
+        }
+
+        // Deduplicate
+        const dedupKey = lowerName;
+        if (seenNames.has(dedupKey)) continue;
+        seenNames.add(dedupKey);
+
+        // Size check
+        const data = entry.getData();
+        if (data.length > MAX_FILE_SIZE) {
+          invalidCount++;
+          continue;
+        }
+
+        // Cap at MAX_IMAGES
+        if (extractedImages.length >= MAX_IMAGES) break;
+
+        extractedImages.push({ name, data: Buffer.from(data), size: data.length });
+      }
+    } else {
+      // Multi-file upload
+      if (imageFiles.length > MAX_FILES) {
+        return c.json({
+          error: `Too many files. Maximum is ${MAX_FILES} files per upload. Received ${imageFiles.length}.`,
+        }, 400);
+      }
+
+      const seenNames = new Set<string>();
+
+      for (const file of imageFiles) {
+        // Validate file type
+        if (!isImageFile(file.name, file.type)) {
+          invalidCount++;
+          continue;
+        }
+
+        // Validate size
+        if (file.size > MAX_FILE_SIZE) {
+          invalidCount++;
+          continue;
+        }
+
+        // Deduplicate
+        const dedupKey = file.name.toLowerCase();
+        if (seenNames.has(dedupKey)) continue;
+        seenNames.add(dedupKey);
+
+        // Cap at MAX_IMAGES
+        if (extractedImages.length >= MAX_IMAGES) break;
+
+        const buf = Buffer.from(await file.arrayBuffer());
+        extractedImages.push({ name: file.name, data: buf, size: file.size });
+      }
+    }
+
+    if (extractedImages.length === 0) {
+      return c.json({
+        error: "No valid images found. Supported formats: .jpg, .jpeg, .png, .webp, .gif (max 10MB each).",
+        invalidCount,
+      }, 400);
+    }
+
+    // Create job
+    const jobId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const sourceName = zipFile ? zipFile.name : "direct-upload";
+
+    db.run(
+      `INSERT INTO jobs (id, user_id, type, status, total_images, source_filename, created_at)
+       VALUES (?, ?, 'images', 'pending', ?, ?, ?)`,
+      [jobId, userId, extractedImages.length, sourceName, now]
+    );
+
+    // Create results rows — for direct uploads, image_url is a data URI
+    const insertResult = db.prepare(
+      `INSERT INTO results (id, job_id, image_url, status, created_at)
+       VALUES (?, ?, ?, 'needs_review', ?)`
+    );
+
+    const insertResults = db.transaction(() => {
+      for (const img of extractedImages) {
+        // Store as a data URI so the AI can process it
+        const ext = img.name.toLowerCase().substring(img.name.lastIndexOf("."));
+        const mimeType = ext === ".jpg" || ext === ".jpeg" ? "image/jpeg"
+          : ext === ".png" ? "image/png"
+          : ext === ".webp" ? "image/webp"
+          : "image/gif";
+        const dataUri = `data:${mimeType};base64,${img.data.toString("base64")}`;
+        insertResult.run(crypto.randomUUID(), jobId, dataUri, now);
+      }
+    });
+
+    insertResults();
+
+    // Fetch created job with results
+    const job = db.query(
+      `SELECT id, user_id, type, status, total_images, processed_images,
+              source_url, source_filename, created_at, completed_at
+       FROM jobs WHERE id = ?`
+    ).get(jobId) as Record<string, unknown> | undefined;
+
+    const results = db.query(
+      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, created_at
+       FROM results WHERE job_id = ? ORDER BY created_at`
+    ).all(jobId) as Record<string, unknown>[];
+
+    return c.json({
+      job: { ...job, user_id: undefined },
+      results,
+      stats: {
+        imagesFound: extractedImages.length,
+        invalidCount,
+        totalSizeBytes: extractedImages.reduce((s, i) => s + i.size, 0),
+        costEstimate: extractedImages.length,
       },
     }, 201);
   });
