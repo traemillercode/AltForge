@@ -14,6 +14,15 @@ const IMAGE_ACCEPT = ".jpg,.jpeg,.png,.webp,.gif";
 const MAX_FILES = 50;
 const MAX_IMAGES = 500;
 
+const GENERIC_ALT_PATTERNS = /^(image|photo|picture|img|placeholder|spacer|icon|logo|graphic|pic|figure|thumbnail)$/i;
+
+function isGoodAlt(alt: string | null): boolean {
+  if (alt === null) return false;
+  if (alt.trim() === "") return false;
+  if (GENERIC_ALT_PATTERNS.test(alt.trim())) return false;
+  return true;
+}
+
 // ── Shared components ──────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
@@ -137,6 +146,8 @@ export default function UploadPage() {
   const [crawling, setCrawling] = useState(false);
   const [crawlError, setCrawlError] = useState<string | null>(null);
   const [crawlResult, setCrawlResult] = useState<ImageUploadResponse | CsvUploadResponse | null>(null);
+  const [crawledPages, setCrawledPages] = useState<string[]>([]);
+  const [skippedImages, setSkippedImages] = useState<{ url: string; altText: string | null }[]>([]);
 
   // ── Images state ──
   const imageFileInputRef = useRef<HTMLInputElement>(null);
@@ -245,6 +256,8 @@ export default function UploadPage() {
       }
       const data = await res.json();
       setCrawlResult(data);
+      setCrawledPages(data.stats?.crawledPages || []);
+      setSkippedImages(data.stats?.skippedImages || []);
       await loadJobs();
     } catch (err) {
       if (err instanceof ApiClientError) setCrawlError(err.message);
@@ -256,6 +269,7 @@ export default function UploadPage() {
 
   const resetCrawl = () => {
     setCrawlUrl(""); setCrawlResult(null); setCrawlError(null);
+    setCrawledPages([]); setSkippedImages([]);
   };
 
   // ── Image upload handlers ────────────────────────────────────────
@@ -521,6 +535,8 @@ export default function UploadPage() {
                 results={crawlResult.results as JobResult[]}
                 jobId={crawlResult.job.id}
                 jobStatus={crawlResult.job.status}
+                crawledPages={crawledPages}
+                skippedImages={skippedImages}
                 onReset={resetCrawl}
                 navigate={navigate}
               />
@@ -763,6 +779,8 @@ function ResultPreview({
   results,
   jobId,
   jobStatus,
+  crawledPages,
+  skippedImages,
   onReset,
   navigate,
 }: {
@@ -773,10 +791,14 @@ function ResultPreview({
   results: JobResult[];
   jobId: string;
   jobStatus?: string;
+  crawledPages?: string[];
+  skippedImages?: { url: string; altText: string | null }[];
   onReset: () => void;
   navigate: ReturnType<typeof useNavigate>;
 }) {
   const [cancelling, setCancelling] = useState(false);
+  const [showCrawledPages, setShowCrawledPages] = useState(false);
+  const [showSkippedImages, setShowSkippedImages] = useState(false);
 
   const handleCancel = async () => {
     if (!window.confirm("Are you sure you want to cancel this job? This will delete all results and cannot be undone.")) {
@@ -808,6 +830,110 @@ function ResultPreview({
           </div>
         ))}
       </div>
+
+      {/* Crawled Pages (expandable) */}
+      {crawledPages && crawledPages.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setShowCrawledPages(!showCrawledPages)}
+            className="w-full flex items-center justify-between px-4 sm:px-6 py-3 text-sm font-semibold text-gray-900 bg-gray-50 hover:bg-gray-100 transition-colors focus-visible:outline-2 focus-visible:outline-brand-500"
+            aria-expanded={showCrawledPages}
+          >
+            <span>Crawled Pages ({crawledPages.length})</span>
+            <svg
+              className={`h-4 w-4 text-gray-500 transition-transform ${showCrawledPages ? "rotate-180" : ""}`}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {showCrawledPages && (
+            <ul className="divide-y divide-gray-100 max-h-60 overflow-y-auto">
+              {crawledPages.map((pageUrl, idx) => (
+                <li key={idx} className="px-4 sm:px-6 py-2.5 text-sm">
+                  <a
+                    href={pageUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-brand-600 hover:text-brand-800 underline break-all focus-visible:outline-2 focus-visible:outline-brand-500"
+                  >
+                    {pageUrl}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* Skipped Images (expandable) */}
+      {skippedImages && skippedImages.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setShowSkippedImages(!showSkippedImages)}
+            className="w-full flex items-center justify-between px-4 sm:px-6 py-3 text-sm font-semibold text-gray-900 bg-gray-50 hover:bg-gray-100 transition-colors focus-visible:outline-2 focus-visible:outline-brand-500"
+            aria-expanded={showSkippedImages}
+          >
+            <span>Skipped Images ({skippedImages.length})</span>
+            <svg
+              className={`h-4 w-4 text-gray-500 transition-transform ${showSkippedImages ? "rotate-180" : ""}`}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {showSkippedImages && (
+            <div className="max-h-80 overflow-y-auto table-responsive">
+              <table className="min-w-full divide-y divide-gray-200" aria-label="Skipped images with existing alt text">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th scope="col" className="px-4 sm:px-6 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                    <th scope="col" className="px-4 sm:px-6 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Image URL</th>
+                    <th scope="col" className="px-4 sm:px-6 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Alt Text</th>
+                    <th scope="col" className="px-4 sm:px-6 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Check</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {skippedImages.map((img, idx) => {
+                    const suspiciousFrontend = !isGoodAlt(img.altText);
+                    return (
+                      <tr key={idx} className={suspiciousFrontend ? "bg-amber-50" : "hover:bg-gray-50"}>
+                        <td className="px-4 sm:px-6 py-2 whitespace-nowrap text-sm text-gray-500">{idx + 1}</td>
+                        <td className="px-4 sm:px-6 py-2 text-sm text-gray-900 max-w-[200px] sm:max-w-sm truncate" title={img.url}>
+                          <a href={img.url} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:text-brand-800 underline focus-visible:outline-2 focus-visible:outline-brand-500">
+                            {img.url}
+                          </a>
+                        </td>
+                        <td className="px-4 sm:px-6 py-2 text-sm text-gray-700 max-w-[150px] truncate" title={img.altText ?? "(none)"}>
+                          {img.altText ?? <span className="italic text-gray-400">(no alt attribute)</span>}
+                        </td>
+                        <td className="px-4 sm:px-6 py-2 whitespace-nowrap">
+                          {suspiciousFrontend ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200">
+                              Review
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
+                              OK
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {!showSkippedImages && skippedImages.some(img => !isGoodAlt(img.altText)) && (
+            <p className="px-4 sm:px-6 py-2 text-xs text-amber-700 bg-amber-50 border-t border-amber-200">
+              ⚠️ Some skipped images may have generic alt text — expand to review.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Results table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">

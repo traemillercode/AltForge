@@ -289,6 +289,8 @@ export function jobsRoutes(db: Database): Hono {
         imagesFound: crawlResult.stats.imagesFound,
         imagesSkipped: crawlResult.stats.imagesSkipped,
         imagesAdded: crawlResult.stats.imagesAdded,
+        crawledPages: crawlResult.stats.crawledPages,
+        skippedImages: crawlResult.stats.skippedImages,
         costEstimate: crawlResult.stats.imagesAdded,
         errors: crawlResult.errors.slice(0, 10),
       },

@@ -15,6 +15,11 @@ export interface CrawlImage {
   contextText: string;
 }
 
+export interface CrawlSkippedImage {
+  url: string;
+  altText: string | null;
+}
+
 export interface CrawlStats {
   pagesFound: number;
   pagesCrawled: number;
@@ -22,6 +27,8 @@ export interface CrawlStats {
   imagesFound: number;
   imagesSkipped: number;
   imagesAdded: number;
+  crawledPages: string[];
+  skippedImages: CrawlSkippedImage[];
 }
 
 export interface CrawlResult {
@@ -280,6 +287,8 @@ export async function crawlSite(startUrl: string): Promise<CrawlResult> {
     imagesFound: 0,
     imagesSkipped: 0,
     imagesAdded: 0,
+    crawledPages: [],
+    skippedImages: [],
   };
 
   // Parse the base URL
@@ -359,6 +368,7 @@ export async function crawlSite(startUrl: string): Promise<CrawlResult> {
     }
 
     stats.pagesCrawled++;
+    stats.crawledPages.push(pageUrl);
 
     const pageImages = extractImagesFromHtml(html, pageUrl);
     stats.imagesFound += pageImages.length;
@@ -375,6 +385,9 @@ export async function crawlSite(startUrl: string): Promise<CrawlResult> {
       // Check alt text quality
       if (isGoodAlt(img.altText)) {
         stats.imagesSkipped++;
+        if (stats.skippedImages.length < 500) {
+          stats.skippedImages.push({ url: img.url, altText: img.altText });
+        }
         continue;
       }
 
