@@ -7,7 +7,7 @@ export default function LandingPage() {
     <div>
       {/* Hero */}
       <section className="bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-28">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16">
           <div className="text-center max-w-3xl mx-auto">
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-gray-900 tracking-tight">
               Generate alt text for{" "}
@@ -51,7 +51,7 @@ export default function LandingPage() {
       </section>
 
       {/* Ad: Below hero */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
         <AdUnit slot="hero-bottom" className="min-h-[90px]" />
       </div>
 
@@ -61,7 +61,7 @@ export default function LandingPage() {
       </div>
 
       {/* Features */}
-      <section className="bg-gray-50 py-16 md:py-20" aria-labelledby="features-heading">
+      <section className="bg-gray-50 py-10 md:py-14" aria-labelledby="features-heading">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 id="features-heading" className="text-2xl md:text-3xl font-bold text-center text-gray-900">
             One workflow, zero busywork
@@ -100,12 +100,12 @@ export default function LandingPage() {
       </section>
 
       {/* Ad: Mid-page */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
         <AdUnit slot="mid-page" className="min-h-[90px]" />
       </div>
 
       {/* Audience */}
-      <section className="bg-white py-16 md:py-20" aria-labelledby="audience-heading">
+      <section className="bg-white py-10 md:py-14" aria-labelledby="audience-heading">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 id="audience-heading" className="text-2xl md:text-3xl font-bold text-center text-gray-900">
             Built for teams that ship accessible content
@@ -141,12 +141,12 @@ export default function LandingPage() {
       </section>
 
       {/* Ad: Before CTA */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
         <AdUnit slot="before-cta" className="min-h-[90px]" />
       </div>
 
       {/* CTA */}
-      <section className="bg-brand-700 py-16" aria-labelledby="cta-heading">
+      <section className="bg-brand-700 py-10" aria-labelledby="cta-heading">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 id="cta-heading" className="text-2xl md:text-3xl font-bold text-white">
             Ready to make your images accessible?

@@ -308,7 +308,7 @@ export default function FreeSample() {
 
   return (
     <section
-      className="bg-white py-16 md:py-20"
+      className="bg-white py-10 md:py-14"
       aria-labelledby="free-sample-heading"
     >
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
