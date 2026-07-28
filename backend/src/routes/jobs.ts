@@ -673,6 +673,33 @@ export function jobsRoutes(db: Database): Hono {
     });
   });
 
+  // DELETE /api/jobs/:id — delete a pending job
+  router.delete("/:id", async (c) => {
+    const userId = getUserId(c);
+    const jobId = c.req.param("id");
+
+    // Verify job ownership
+    const job = db.query(
+      `SELECT id, status FROM jobs WHERE id = ? AND user_id = ?`
+    ).get(jobId, userId) as Record<string, unknown> | undefined;
+
+    if (!job) {
+      return c.json({ error: "Job not found" }, 404);
+    }
+
+    if (job.status !== "pending") {
+      return c.json({
+        error: `Only pending jobs can be cancelled. Current status: ${job.status}`,
+      }, 409);
+    }
+
+    // Delete all associated results first, then the job
+    db.run("DELETE FROM results WHERE job_id = ?", [jobId]);
+    db.run("DELETE FROM jobs WHERE id = ?", [jobId]);
+
+    return c.json({ success: true });
+  });
+
   // GET /api/jobs/:id/export — export results as CSV or HTML
   router.get("/:id/export", (c) => {
     const userId = getUserId(c);
