@@ -95,7 +95,12 @@ function EditableAltCell({ result, jobId, onSaved }: EditableAltCellProps) {
   const [value, setValue] = useState(result.alt_text ?? "");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const altText = result.alt_text ?? "";
+  const isLong = altText.length > 100;
+  const displayText = expanded || !isLong ? altText : altText.slice(0, 100) + "…";
 
   const currentStatus = editing
     ? getComplianceStatus(value)
@@ -221,14 +226,26 @@ function EditableAltCell({ result, jobId, onSaved }: EditableAltCellProps) {
 
   return (
     <div className="relative">
-      <button
-        onClick={() => { setValue(result.alt_text ?? ""); setEditing(true); }}
-        className="text-left text-gray-900 hover:text-brand-700 focus-visible:outline-2 focus-visible:outline-brand-500 cursor-text w-full break-words"
-        title="Click to edit"
-        aria-label={`Click to edit alt text: ${result.alt_text}`}
-      >
-        {result.alt_text}
-      </button>
+      <div className="flex items-start gap-1">
+        <button
+          onClick={() => { setValue(result.alt_text ?? ""); setEditing(true); }}
+          className="text-left text-gray-900 hover:text-brand-700 focus-visible:outline-2 focus-visible:outline-brand-500 cursor-text break-words flex-1"
+          title="Click to edit"
+          aria-label={`Click to edit alt text: ${result.alt_text}`}
+        >
+          {displayText}
+        </button>
+        {isLong && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
+            className="flex-shrink-0 text-xs text-brand-600 hover:text-brand-800 underline focus-visible:outline-2 focus-visible:outline-brand-500 mt-0.5"
+            aria-label={expanded ? "Show less" : "Show more"}
+            aria-expanded={expanded}
+          >
+            {expanded ? "Show less" : "Show more"}
+          </button>
+        )}
+      </div>
       {saved && (
         <span className="absolute -top-4 right-0 text-xs text-green-600 font-medium animate-pulse">
           ✓ Saved
@@ -371,6 +388,26 @@ export default function JobDetailPage() {
           : r
       )
     );
+  }
+
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+
+  async function handleRegenerate(resultId: string) {
+    if (!id || regeneratingId) return;
+    setRegeneratingId(resultId);
+    try {
+      const updated = await api.regenerateResult(id, resultId);
+      handleResultSaved(updated);
+      await refreshUser();
+    } catch (err) {
+      if (err instanceof ApiClientError) {
+        alert(err.message);
+      } else {
+        alert("Regeneration failed. Please try again.");
+      }
+    } finally {
+      setRegeneratingId(null);
+    }
   }
 
   function handleExport(format: "csv" | "html") {
@@ -678,6 +715,7 @@ export default function JobDetailPage() {
                 <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[160px]">Alt Text</th>
                 <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">Chars</th>
                 <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">Status</th>
+                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Action</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -686,19 +724,33 @@ export default function JobDetailPage() {
                   ? getComplianceStatus(result.alt_text ?? "")
                   : result.status;
                 const charCount = result.alt_text ? result.alt_text.length : result.char_count;
+                const isRegenerating = regeneratingId === result.id;
+                const isCrawlJob = job.type === "crawl";
+                const sourcePageUrl = result.source_page_url;
 
                 return (
                   <tr key={result.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{idx + 1}</td>
-                    <td className="px-4 py-3 text-sm text-gray-900 max-w-xs truncate" title={result.image_url}>
+                    <td className="px-4 py-3 text-sm text-gray-900 max-w-xs">
                       <a
                         href={result.image_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-brand-600 hover:text-brand-800 hover:underline focus-visible:outline-2 focus-visible:outline-brand-500"
+                        className="text-brand-600 hover:text-brand-800 hover:underline focus-visible:outline-2 focus-visible:outline-brand-500 truncate block"
                       >
-                        {result.image_url}
+                        {result.image_url.startsWith("data:") ? result.image_url.substring(0, 60) + "…" : result.image_url}
                       </a>
+                      {isCrawlJob && sourcePageUrl && (
+                        <a
+                          href={sourcePageUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-gray-400 hover:text-gray-600 hover:underline block mt-0.5 truncate focus-visible:outline-2 focus-visible:outline-brand-500"
+                          title={`Source page: ${sourcePageUrl}`}
+                        >
+                          ↳ {sourcePageUrl}
+                        </a>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-900 max-w-md">
                       <EditableAltCell
@@ -715,6 +767,27 @@ export default function JobDetailPage() {
                         <span className="text-gray-400 text-xs italic">Processing</span>
                       ) : (
                         <ComplianceBadge status={displayStatus} />
+                      )}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {!isRegenerating ? (
+                        <button
+                          onClick={() => handleRegenerate(result.id)}
+                          disabled={regeneratingId !== null}
+                          className="inline-flex items-center px-2 py-1 text-xs font-medium text-brand-700 bg-brand-50 border border-brand-200 rounded hover:bg-brand-100 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-brand-500 transition-colors"
+                          title="Regenerate alt text (costs 1 credit)"
+                          aria-label={`Regenerate alt text for image ${idx + 1}`}
+                        >
+                          <svg className="h-3 w-3 mr-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                          Regen
+                        </button>
+                      ) : (
+                        <span className="inline-flex items-center text-xs text-gray-500" role="status">
+                          <div className="w-3 h-3 border-2 border-brand-200 border-t-brand-600 rounded-full animate-spin mr-1" aria-hidden="true" />
+                          Regenerating…
+                        </span>
                       )}
                     </td>
                   </tr>

@@ -955,7 +955,14 @@ function ResultPreview({
                 <tr key={result.id} className="hover:bg-gray-50">
                   <td className="px-4 sm:px-6 py-3 whitespace-nowrap text-sm text-gray-500">{idx + 1}</td>
                   <td className="px-4 sm:px-6 py-3 text-sm text-gray-900 max-w-[300px] md:max-w-md truncate" title={result.image_url}>
-                    {result.image_url.startsWith("data:") ? result.image_url.substring(0, 80) + "…" : result.image_url}
+                    <div>
+                      {result.image_url.startsWith("data:") ? result.image_url.substring(0, 80) + "…" : result.image_url}
+                    </div>
+                    {result.source_page_url && (
+                      <div className="text-xs text-gray-400 truncate mt-0.5" title={result.source_page_url}>
+                        ↳ {result.source_page_url}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 sm:px-6 py-3 whitespace-nowrap"><StatusBadge status={result.status} /></td>
                 </tr>

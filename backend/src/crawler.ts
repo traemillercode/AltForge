@@ -13,6 +13,7 @@ export interface CrawlImage {
   url: string;
   altText: string | null;
   contextText: string;
+  sourcePageUrl: string;
 }
 
 export interface CrawlSkippedImage {
@@ -226,6 +227,7 @@ function extractImagesFromHtml(html: string, pageUrl: string): CrawlImage[] {
       url: absoluteUrl,
       altText: alt,
       contextText: contextText.slice(0, 500), // limit context to 500 chars
+      sourcePageUrl: pageUrl,
     });
   }
 

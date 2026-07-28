@@ -94,6 +94,16 @@ function initializeSchema(database: Database): void {
     console.log("[db] Migrated: added stripe_customer_id to users");
   }
 
+  // Migration: add source_page_url to results table
+  const resultColumns = database
+    .query(`PRAGMA table_info(results)`)
+    .all() as Array<{ name: string }>;
+  const hasSourcePageUrl = resultColumns.some((col) => col.name === "source_page_url");
+  if (!hasSourcePageUrl) {
+    database.run(`ALTER TABLE results ADD COLUMN source_page_url TEXT;`);
+    console.log("[db] Migrated: added source_page_url to results");
+  }
+
   // Migration: expand job type check constraint to include 'images'
   // SQLite doesn't support ALTER CHECK, so recreate the constraint via a new table
   const typeConstraint = database

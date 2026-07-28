@@ -56,6 +56,7 @@ export interface JobResult {
   char_count: number;
   status: ResultStatus;
   context_text: string | null;
+  source_page_url: string | null;
   created_at: string;
 }
 
@@ -204,6 +205,20 @@ export const api = {
       credentials: "include",
     });
     return handleResponse<{ success: boolean }>(res);
+  },
+
+  async regenerateResult(
+    jobId: string,
+    resultId: string
+  ): Promise<{ id: string; alt_text: string; char_count: number; status: string }> {
+    const res = await fetch(
+      `${API_BASE}/jobs/${encodeURIComponent(jobId)}/results/${encodeURIComponent(resultId)}/regenerate`,
+      {
+        method: "POST",
+        credentials: "include",
+      }
+    );
+    return handleResponse<{ id: string; alt_text: string; char_count: number; status: string }>(res);
   },
 
   getExportUrl(jobId: string, format: "csv" | "html"): string {
