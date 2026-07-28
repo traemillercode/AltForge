@@ -289,4 +289,37 @@ export const api = {
   getExportUrl(jobId: string, format: "csv" | "html"): string {
     return `${API_BASE}/jobs/${encodeURIComponent(jobId)}/export?format=${format}`;
   },
+
+  async getJobReport(jobId: string): Promise<JobReportData> {
+    const res = await fetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}/report`, {
+      credentials: "include",
+    });
+    return handleResponse<JobReportData>(res);
+  },
 };
+
+export interface JobReportData {
+  job: {
+    id: string;
+    type: JobType;
+    status: JobStatus;
+    total_images: number;
+    processed_images: number;
+    source_url: string | null;
+    source_filename: string | null;
+    created_at: string;
+    completed_at: string | null;
+  };
+  totalImages: number;
+  results: JobResult[];
+  skipped: SkippedResult[];
+  creditUsage: number;
+  compliance: {
+    compliant: number;
+    compliant_long: number;
+    needs_review: number;
+    decorative: number;
+    total: number;
+    passRate: number;
+  };
+}
