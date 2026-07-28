@@ -267,6 +267,7 @@ interface SkippedRowProps {
 
 function SkippedRow({ skipped, index, isGenerating, isCopied, anyGenerating, onCopy, onGenerate }: SkippedRowProps) {
   const [expandedAlt, setExpandedAlt] = useState(false);
+  const [imgError, setImgError] = useState(false);
   const altText = skipped.existing_alt_text ?? "";
   const isLong = altText.length > 100;
   const displayAlt = expandedAlt || !isLong ? altText : altText.slice(0, 100) + "…";
@@ -274,6 +275,23 @@ function SkippedRow({ skipped, index, isGenerating, isCopied, anyGenerating, onC
   return (
     <tr className="hover:bg-gray-50">
       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{index + 1}</td>
+      <td className="px-2 py-3">
+        {imgError ? (
+          <div className="w-16 h-16 rounded border border-gray-200 bg-gray-100 flex items-center justify-center" title="Image failed to load">
+            <svg className="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </div>
+        ) : (
+          <img
+            src={skipped.image_url}
+            alt={altText || `Skipped image ${index + 1}`}
+            className="w-16 h-16 object-cover rounded border border-gray-200"
+            loading="lazy"
+            onError={() => setImgError(true)}
+          />
+        )}
+      </td>
       <td className="px-4 py-3 text-sm text-gray-900 max-w-xs">
         {skipped.source_page_url ? (
           <a
@@ -394,6 +412,9 @@ export default function JobDetailPage() {
   const [showSkipped, setShowSkipped] = useState(false);
   const [generatingSkippedId, setGeneratingSkippedId] = useState<number | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const SKIPPED_PAGE_LIMIT = 10;
+  const [skippedPage, setSkippedPage] = useState(1);
+  const [skippedTotal, setSkippedTotal] = useState(0);
 
   useEffect(() => {
     if (!id) return;
@@ -484,14 +505,17 @@ export default function JobDetailPage() {
     }
   }
 
-  async function loadSkipped(jobId: string) {
+  async function loadSkipped(jobId: string, page = 1) {
     try {
       setSkippedLoading(true);
-      const data = await api.getSkippedResults(jobId);
+      const data = await api.getSkippedResults(jobId, page, SKIPPED_PAGE_LIMIT);
       setSkipped(data.skipped);
+      setSkippedTotal(data.total);
+      setSkippedPage(data.page);
     } catch {
       // Silently fail — skipped images are non-critical
       setSkipped([]);
+      setSkippedTotal(0);
     } finally {
       setSkippedLoading(false);
     }
@@ -591,7 +615,14 @@ export default function JobDetailPage() {
         },
       ]);
       // Remove from skipped list
-      setSkipped((prev) => prev.filter((s) => s.id !== skipId));
+      setSkipped((prev) => {
+        const next = prev.filter((s) => s.id !== skipId);
+        // If the current page is now empty but there are more pages, go back one
+        if (next.length === 0 && skippedPage > 1 && id) {
+          loadSkipped(id, skippedPage - 1);
+        }
+        return next;
+      });
       await refreshUser();
     } catch (err) {
       if (err instanceof ApiClientError) {
@@ -1023,7 +1054,7 @@ export default function JobDetailPage() {
           >
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-semibold text-gray-900">
-                Skipped Images ({skipped.length})
+                Skipped Images ({skippedTotal})
               </h2>
               {skippedLoading && (
                 <div className="w-3.5 h-3.5 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" aria-hidden="true" />
@@ -1065,6 +1096,7 @@ export default function JobDetailPage() {
                   <thead className="bg-gray-50 sticky top-0 z-10">
                     <tr>
                       <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-10">#</th>
+                      <th scope="col" className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Thumb</th>
                       <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[140px]">Source Page</th>
                       <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[140px]">Image URL</th>
                       <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[160px]">Existing Alt Text</th>
@@ -1086,6 +1118,39 @@ export default function JobDetailPage() {
                     ))}
                   </tbody>
                 </table>
+              )}
+
+              {/* Pagination controls */}
+              {skippedTotal > SKIPPED_PAGE_LIMIT && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50">
+                  <span className="text-sm text-gray-600">
+                    Page {skippedPage} of {Math.ceil(skippedTotal / SKIPPED_PAGE_LIMIT)}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => { if (id) loadSkipped(id, skippedPage - 1); }}
+                      disabled={skippedPage <= 1}
+                      className="inline-flex items-center px-3 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-brand-500 transition-colors"
+                      aria-label="Previous page"
+                    >
+                      <svg className="h-3 w-3 mr-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                      Previous
+                    </button>
+                    <button
+                      onClick={() => { if (id) loadSkipped(id, skippedPage + 1); }}
+                      disabled={skippedPage >= Math.ceil(skippedTotal / SKIPPED_PAGE_LIMIT)}
+                      className="inline-flex items-center px-3 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-brand-500 transition-colors"
+                      aria-label="Next page"
+                    >
+                      Next
+                      <svg className="h-3 w-3 ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           )}

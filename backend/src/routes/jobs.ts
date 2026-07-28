@@ -797,15 +797,46 @@ export function jobsRoutes(db: Database): Hono {
     }
 
     if (job.type !== "crawl") {
-      return c.json({ skipped: [] });
+      return c.json({ skipped: [], total: 0, page: 1, limit: 10 });
     }
 
+    // Parse pagination params (optional; return all if not provided)
+    const pageParam = c.req.query("page");
+    const limitParam = c.req.query("limit");
+
+    if (pageParam !== undefined && limitParam !== undefined) {
+      const page = Math.max(1, parseInt(pageParam, 10) || 1);
+      const limit = Math.max(1, Math.min(100, parseInt(limitParam, 10) || 10));
+      const offset = (page - 1) * limit;
+
+      const totalRow = db.query(
+        `SELECT COUNT(*) as count FROM skipped_results WHERE job_id = ?`
+      ).get(jobId) as { count: number };
+      const total = totalRow.count;
+
+      const skipped = db.query(
+        `SELECT id, job_id, image_url, source_page_url, existing_alt_text, created_at
+         FROM skipped_results WHERE job_id = ? ORDER BY id LIMIT ? OFFSET ?`
+      ).all(jobId, limit, offset) as Record<string, unknown>[];
+
+      const mapped = skipped.map((s) => ({
+        id: s.id,
+        job_id: s.job_id,
+        image_url: s.image_url,
+        source_page_url: s.source_page_url,
+        existing_alt_text: s.existing_alt_text,
+        created_at: s.created_at,
+      }));
+
+      return c.json({ skipped: mapped, total, page, limit });
+    }
+
+    // No pagination — return all (backward compatible)
     const skipped = db.query(
       `SELECT id, job_id, image_url, source_page_url, existing_alt_text, created_at
        FROM skipped_results WHERE job_id = ? ORDER BY id`
     ).all(jobId) as Record<string, unknown>[];
 
-    // Map to camelCase for frontend
     const mapped = skipped.map((s) => ({
       id: s.id,
       job_id: s.job_id,
@@ -815,7 +846,7 @@ export function jobsRoutes(db: Database): Hono {
       created_at: s.created_at,
     }));
 
-    return c.json({ skipped: mapped });
+    return c.json({ skipped: mapped, total: mapped.length, page: 1, limit: mapped.length });
   });
 
   // POST /api/jobs/:id/skipped/:skippedId/generate — generate alt text for a skipped image
