@@ -198,6 +198,14 @@ export const api = {
     return handleResponse<{ id: string; alt_text: string; char_count: number; status: string }>(res);
   },
 
+  async deleteJob(id: string): Promise<{ success: boolean }> {
+    const res = await fetch(`${API_BASE}/jobs/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    return handleResponse<{ success: boolean }>(res);
+  },
+
   getExportUrl(jobId: string, format: "csv" | "html"): string {
     return `${API_BASE}/jobs/${encodeURIComponent(jobId)}/export?format=${format}`;
   },

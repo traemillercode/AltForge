@@ -225,14 +225,19 @@ export default function UploadPage() {
   // ── Crawl handlers ───────────────────────────────────────────────
 
   const handleCrawl = async () => {
-    if (!crawlUrl.trim()) return;
+    let url = crawlUrl.trim();
+    if (!url) return;
+    // Auto-prepend https:// if no protocol specified
+    if (!/^https?:\/\//i.test(url)) {
+      url = `https://${url}`;
+    }
     try {
       setCrawling(true); setCrawlError(null);
       const res = await fetch("/api/jobs/crawl", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ url: crawlUrl.trim() }),
+        body: JSON.stringify({ url }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({ error: "Crawl failed" }));
@@ -458,6 +463,7 @@ export default function UploadPage() {
                 ]}
                 results={csvResult.results}
                 jobId={csvResult.job.id}
+                jobStatus={csvResult.job.status}
                 onReset={resetCsv}
                 navigate={navigate}
               />
@@ -473,8 +479,7 @@ export default function UploadPage() {
                 <p className="text-sm text-gray-600 mb-4">{TABS.find(t => t.id === "crawl")?.description}</p>
                 <div>
                   <label htmlFor="crawl-url-input" className="block text-sm font-medium text-gray-700">Website URL</label>
-                  <div className="mt-1 flex rounded-md shadow-sm">
-                    <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">https://</span>
+                  <div className="mt-1">
                     <input
                       id="crawl-url-input"
                       type="text"
@@ -482,11 +487,11 @@ export default function UploadPage() {
                       onChange={(e) => setCrawlUrl(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") handleCrawl(); }}
                       placeholder="example.com"
-                      className="flex-1 min-w-0 block w-full px-3 py-2 rounded-none rounded-r-md border border-gray-300 focus:ring-brand-500 focus:border-brand-500 text-sm"
+                      className="block w-full px-3 py-2 rounded-md border border-gray-300 shadow-sm focus:ring-brand-500 focus:border-brand-500 text-sm"
                       aria-label="Website URL to crawl"
                     />
                   </div>
-                  <p className="mt-1 text-xs text-gray-500">Enter a full URL like https://example.com or just example.com</p>
+                  <p className="mt-1 text-xs text-gray-500">Enter a website URL (e.g. example.com)</p>
                 </div>
 
                 {crawlError && (
@@ -510,11 +515,12 @@ export default function UploadPage() {
                 source={crawlResult.job.source_url || crawlResult.job.source_filename || undefined}
                 stats={[
                   { label: "Images Found", value: (crawlResult as any).stats?.imagesAdded ?? (crawlResult as any).stats?.validUrls ?? crawlResult.job.total_images, color: "text-green-700" },
-                  { label: "Skipped", value: (crawlResult as any).stats?.imagesSkipped ?? (crawlResult as any).stats?.invalidCount ?? 0, color: "text-amber-700" },
+                  { label: "Skipped", value: (crawlResult as any).stats?.imagesSkipped ?? (crawlResult as any).stats?.invalidCount ?? 0, subtitle: "Already have descriptive alt text", color: "text-amber-700" },
                   { label: "Credit Cost", value: (crawlResult as any).stats?.costEstimate ?? crawlResult.job.total_images, subtitle: "1 credit per image", color: "text-brand-700" },
                 ]}
                 results={crawlResult.results as JobResult[]}
                 jobId={crawlResult.job.id}
+                jobStatus={crawlResult.job.status}
                 onReset={resetCrawl}
                 navigate={navigate}
               />
@@ -675,6 +681,7 @@ export default function UploadPage() {
                 ]}
                 results={imageResult.results}
                 jobId={imageResult.job.id}
+                jobStatus={imageResult.job.status}
                 onReset={resetImages}
                 navigate={navigate}
               />
@@ -755,6 +762,7 @@ function ResultPreview({
   stats,
   results,
   jobId,
+  jobStatus,
   onReset,
   navigate,
 }: {
@@ -764,9 +772,30 @@ function ResultPreview({
   stats: StatDef[];
   results: JobResult[];
   jobId: string;
+  jobStatus?: string;
   onReset: () => void;
   navigate: ReturnType<typeof useNavigate>;
 }) {
+  const [cancelling, setCancelling] = useState(false);
+
+  const handleCancel = async () => {
+    if (!window.confirm("Are you sure you want to cancel this job? This will delete all results and cannot be undone.")) {
+      return;
+    }
+    try {
+      setCancelling(true);
+      await api.deleteJob(jobId);
+      onReset();
+    } catch (err) {
+      if (err instanceof ApiClientError) {
+        alert(err.message);
+      } else {
+        alert("Failed to cancel job. Please try again.");
+      }
+    } finally {
+      setCancelling(false);
+    }
+  };
   return (
     <div className="space-y-6">
       {/* Stats */}
@@ -815,9 +844,22 @@ function ResultPreview({
 
       {/* Actions */}
       <div className="flex flex-col sm:flex-row sm:justify-between items-stretch sm:items-center gap-3">
-        <button type="button" onClick={onReset} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-brand-500">
-          Start a new job
-        </button>
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={onReset} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-brand-500">
+            Start a new job
+          </button>
+          {jobStatus === "pending" && (
+            <button
+              type="button"
+              onClick={handleCancel}
+              disabled={cancelling}
+              className="px-4 py-2 text-sm font-medium text-red-700 bg-white border border-red-300 rounded-md hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-brand-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-busy={cancelling}
+            >
+              {cancelling ? "Cancelling…" : "Cancel Job"}
+            </button>
+          )}
+        </div>
         <button type="button"
           className="inline-flex items-center justify-center px-6 py-2.5 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-brand-500 focus-visible:outline-offset-2"
           onClick={() => navigate(`/jobs/${jobId}`)}>
