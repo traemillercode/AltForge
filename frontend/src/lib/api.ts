@@ -60,6 +60,15 @@ export interface JobResult {
   created_at: string;
 }
 
+export interface SkippedResult {
+  id: number;
+  job_id: string;
+  image_url: string;
+  source_page_url: string | null;
+  existing_alt_text: string | null;
+  created_at: string;
+}
+
 export interface CsvUploadResponse {
   job: Job;
   results: JobResult[];
@@ -219,6 +228,35 @@ export const api = {
       }
     );
     return handleResponse<{ id: string; alt_text: string; char_count: number; status: string }>(res);
+  },
+
+  async getSkippedResults(jobId: string): Promise<{ skipped: SkippedResult[] }> {
+    const res = await fetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}/skipped`, {
+      credentials: "include",
+    });
+    return handleResponse<{ skipped: SkippedResult[] }>(res);
+  },
+
+  async generateSkipped(
+    jobId: string,
+    skippedId: number
+  ): Promise<{
+    id: string;
+    job_id: string;
+    image_url: string;
+    alt_text: string;
+    char_count: number;
+    status: string;
+    source_page_url: string | null;
+  }> {
+    const res = await fetch(
+      `${API_BASE}/jobs/${encodeURIComponent(jobId)}/skipped/${skippedId}/generate`,
+      {
+        method: "POST",
+        credentials: "include",
+      }
+    );
+    return handleResponse(res);
   },
 
   getExportUrl(jobId: string, format: "csv" | "html"): string {

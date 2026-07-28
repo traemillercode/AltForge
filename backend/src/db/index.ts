@@ -78,11 +78,23 @@ function initializeSchema(database: Database): void {
     );
   `);
 
+  database.run(`
+    CREATE TABLE IF NOT EXISTS skipped_results (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      image_url TEXT NOT NULL,
+      source_page_url TEXT,
+      existing_alt_text TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+
   database.run(`CREATE INDEX IF NOT EXISTS idx_jobs_user_id ON jobs(user_id);`);
   database.run(`CREATE INDEX IF NOT EXISTS idx_results_job_id ON results(job_id);`);
   database.run(`CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);`);
   database.run(`CREATE INDEX IF NOT EXISTS idx_transactions_stripe_ref ON transactions(stripe_reference);`);
   database.run(`CREATE INDEX IF NOT EXISTS idx_drip_emails_user_type ON drip_emails(user_id, drip_type);`);
+  database.run(`CREATE INDEX IF NOT EXISTS idx_skipped_results_job_id ON skipped_results(job_id);`);
 
   // Migration: add stripe_customer_id to users table
   const userColumns = database
