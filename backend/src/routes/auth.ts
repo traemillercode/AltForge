@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Database } from "bun:sqlite";
 import type { UserRow } from "../types.js";
 import { createSession, destroySession, getUserId } from "../middleware/auth.js";
+import { sendEmail } from "../email.js";
 
 export function authRoutes(db: Database): Hono {
   const router = new Hono();
@@ -41,6 +42,25 @@ export function authRoutes(db: Database): Hono {
       );
 
       const token = createSession(id);
+
+      // Send welcome email asynchronously (don't block response)
+      sendEmail(
+        email.toLowerCase().trim(),
+        "Welcome to AltForge — start with your 25 free credits",
+        `<h1>Welcome to AltForge!</h1>
+<p>Your account is ready — you've got <strong>25 free credits</strong> to generate WCAG-compliant alt-text for your images.</p>
+<h2>Getting started:</h2>
+<ol>
+  <li>Go to your <a href="https://altforge.app/dashboard">dashboard</a></li>
+  <li>Upload a CSV of image URLs, crawl a website, or drop images directly</li>
+  <li>Let AI generate alt-text for every image in seconds</li>
+  <li>Review, edit, and export as CSV or ready-to-paste HTML</li>
+</ol>
+<p>Need more credits? Visit the <a href="https://altforge.app/pricing">pricing page</a>.</p>
+<p>— The AltForge team</p>`
+      ).catch((err) => {
+        console.error("[auth] Welcome email failed:", err);
+      });
 
       return new Response(JSON.stringify({
         user: { id, email: email.toLowerCase().trim(), credits: 25 },

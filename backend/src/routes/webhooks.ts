@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Database } from "bun:sqlite";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { sendEmail } from "../email.js";
 
 // Price ID → credits mapping
 const PRICE_CREDITS: Record<string, number> = {
@@ -125,6 +126,9 @@ export function webhookRoutes(db: Database): Hono {
         case "invoice.paid":
           await handleInvoicePaid(event.data.object, db);
           break;
+        case "invoice.payment_failed":
+          await handleInvoicePaymentFailed(event.data.object, db);
+          break;
         default:
           // Acknowledge all other event types silently
           console.log(`[webhook] Unhandled event type: ${event.type}`);
@@ -188,13 +192,30 @@ async function handleCheckoutSessionCompleted(
   }
 
   // Add credits
-  await addCredits(
+  const credited = await addCredits(
     db,
     clientReferenceId,
     creditsToAdd,
     `session_${sessionId}`,
     mode === "subscription" ? "subscription_initial" : "one_time_purchase"
   );
+
+  // Send payment confirmation email
+  if (credited) {
+    const user = db.query("SELECT email FROM users WHERE id = ?")
+      .get(clientReferenceId) as { email: string } | undefined;
+    if (user) {
+      const amountDollars = amountTotal ? (amountTotal / 100).toFixed(2) : "N/A";
+      sendEmail(
+        user.email,
+        "Payment confirmed — credits added to your account",
+        `<h1>Payment confirmed</h1>
+<p>Your payment of <strong>${amountDollars}</strong> was successful. <strong>${creditsToAdd} credits</strong> have been added to your account.</p>
+<p><a href="https://altforge.app/dashboard">Go to your dashboard</a> to start using them.</p>
+<p>— The AltForge team</p>`
+      ).catch((err) => console.error("[webhook] Payment confirmation email failed:", err));
+    }
+  }
 
   // If this is a subscription, also log the subscription ID for renewal tracking
   if (subscription) {
@@ -259,7 +280,60 @@ async function handleInvoicePaid(
   }
 
   // Add credits for subscription renewal
-  await addCredits(db, user.id, creditsToAdd, `invoice_${invoiceId}`, "subscription_renewal");
+  const credited = await addCredits(db, user.id, creditsToAdd, `invoice_${invoiceId}`, "subscription_renewal");
+
+  // Send payment confirmation email
+  if (credited) {
+    const userRow = db.query("SELECT email FROM users WHERE id = ?")
+      .get(user.id) as { email: string } | undefined;
+    if (userRow) {
+      sendEmail(
+        userRow.email,
+        "Payment confirmed — credits added to your account",
+        `<h1>Payment confirmed</h1>
+<p>Your subscription renewal was successful. <strong>${creditsToAdd} credits</strong> have been added to your account.</p>
+<p><a href="https://altforge.app/dashboard">Go to your dashboard</a> to keep generating.</p>
+<p>— The AltForge team</p>`
+      ).catch((err) => console.error("[webhook] Subscription confirmation email failed:", err));
+    }
+  }
+}
+
+async function handleInvoicePaymentFailed(
+  obj: Record<string, unknown>,
+  db: Database
+): Promise<void> {
+  const invoiceId = obj.id as string | undefined;
+  const customer = obj.customer as string | null | undefined;
+
+  console.log(
+    `[webhook] invoice.payment_failed: invoice=${invoiceId}, customer=${customer}`
+  );
+
+  if (!customer) {
+    console.warn("[webhook] No customer on failed invoice");
+    return;
+  }
+
+  // Look up the user by Stripe customer ID
+  const user = db
+    .query("SELECT id, email FROM users WHERE stripe_customer_id = ?")
+    .get(customer) as { id: string; email: string } | undefined;
+
+  if (!user) {
+    console.warn(`[webhook] No user found for Stripe customer ${customer}`);
+    return;
+  }
+
+  sendEmail(
+    user.email,
+    "Payment failed — update your billing info",
+    `<h1>Payment failed</h1>
+<p>We weren't able to process your latest payment. Your credits haven't been affected.</p>
+<p>Please <a href="https://altforge.app/dashboard">update your billing information</a> to avoid any interruption.</p>
+<p>If you need help, just reply to this email.</p>
+<p>— The AltForge team</p>`
+  ).catch((err) => console.error("[webhook] Failed payment email failed:", err));
 }
 
 async function addCredits(
@@ -268,7 +342,7 @@ async function addCredits(
   amount: number,
   reference: string,
   reason: string
-): Promise<void> {
+): Promise<boolean> {
   // Check for duplicate transaction (idempotency)
   const existing = db
     .query(
@@ -280,7 +354,7 @@ async function addCredits(
     console.log(
       `[webhook] Duplicate transaction: ref=${reference}, reason=${reason} — skipping`
     );
-    return;
+    return false;
   }
 
   // Verify user exists
@@ -290,7 +364,7 @@ async function addCredits(
 
   if (!user) {
     console.warn(`[webhook] User not found: ${userId}`);
-    return;
+    return false;
   }
 
   // Update credits
@@ -308,4 +382,6 @@ async function addCredits(
     `[webhook] Credited ${amount} credits to user ${userId} (${reason}). ` +
     `Balance: ${user.credits} → ${newBalance}`
   );
+
+  return true;
 }

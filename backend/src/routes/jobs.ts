@@ -6,6 +6,7 @@ import AdmZip from "adm-zip";
 import { authMiddleware } from "../middleware/auth.js";
 import { crawlSite } from "../crawler.js";
 import { generateAltText, requireApiKey } from "../ai.js";
+import { sendEmail } from "../email.js";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_TOTAL_UPLOAD = 50 * 1024 * 1024; // 50MB
@@ -785,6 +786,31 @@ async function processJobInBackground(
 
       try {
         deductTx();
+
+        // Check post-deduction credit balance and send warning emails
+        const updatedUser = db.query("SELECT email, credits FROM users WHERE id = ?")
+          .get(userId) as { email: string; credits: number } | undefined;
+        if (updatedUser) {
+          if (updatedUser.credits === 0) {
+            sendEmail(
+              updatedUser.email,
+              "You're out of credits — refill to continue",
+              `<h1>You're out of credits</h1>
+<p>You've used all your credits. Don't worry — you can refill anytime.</p>
+<p><a href="https://altforge.app/pricing">Get more credits</a> to keep generating alt-text.</p>
+<p>— The AltForge team</p>`
+            ).catch((err) => console.error("[jobs] Out-of-credits email failed:", err));
+          } else if (updatedUser.credits <= 5) {
+            sendEmail(
+              updatedUser.email,
+              "Running low on credits — refill to keep generating",
+              `<h1>Running low on credits</h1>
+<p>You have <strong>${updatedUser.credits} credit${updatedUser.credits === 1 ? "" : "s"}</strong> left. Refill now to keep generating alt-text without interruption.</p>
+<p><a href="https://altforge.app/pricing">Get more credits</a></p>
+<p>— The AltForge team</p>`
+            ).catch((err) => console.error("[jobs] Low-credit email failed:", err));
+          }
+        }
 
         // Process the image with GPT-4o-mini
         const generated = await generateAltText(imageUrl, contextText, apiKey);
