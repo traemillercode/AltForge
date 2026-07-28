@@ -33,6 +33,7 @@ export interface Result {
   char_count: number;
   status: "compliant" | "needs_review" | "decorative";
   context_text: string | null;
+  source_page_url: string | null;
   created_at: string;
 }
 

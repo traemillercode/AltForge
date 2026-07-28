@@ -179,7 +179,7 @@ export function jobsRoutes(db: Database): Hono {
     ).get(jobId) as Record<string, unknown> | undefined;
 
     const results = db.query(
-      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, created_at
+      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, source_page_url, created_at
        FROM results WHERE job_id = ? ORDER BY created_at`
     ).all(jobId) as Record<string, unknown>[];
 
@@ -247,8 +247,8 @@ export function jobsRoutes(db: Database): Hono {
     // Create results rows for images that need alt text
     if (crawlResult.images.length > 0) {
       const insertResult = db.prepare(
-        `INSERT INTO results (id, job_id, image_url, status, alt_text, context_text, created_at)
-         VALUES (?, ?, ?, 'needs_review', ?, ?, ?)`
+        `INSERT INTO results (id, job_id, image_url, status, alt_text, context_text, source_page_url, created_at)
+         VALUES (?, ?, ?, 'needs_review', ?, ?, ?, ?)`
       );
 
       const insertResults = db.transaction(() => {
@@ -259,6 +259,7 @@ export function jobsRoutes(db: Database): Hono {
             img.url,
             img.altText,
             img.contextText,
+            img.sourcePageUrl,
             now
           );
         }
@@ -275,7 +276,7 @@ export function jobsRoutes(db: Database): Hono {
     ).get(jobId) as Record<string, unknown> | undefined;
 
     const results = db.query(
-      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, created_at
+      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, source_page_url, created_at
        FROM results WHERE job_id = ? ORDER BY created_at`
     ).all(jobId) as Record<string, unknown>[];
 
@@ -467,7 +468,7 @@ export function jobsRoutes(db: Database): Hono {
     ).get(jobId) as Record<string, unknown> | undefined;
 
     const results = db.query(
-      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, created_at
+      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, source_page_url, created_at
        FROM results WHERE job_id = ? ORDER BY created_at`
     ).all(jobId) as Record<string, unknown>[];
 
@@ -537,7 +538,7 @@ export function jobsRoutes(db: Database): Hono {
 
     // Load results that need processing (status = 'needs_review')
     const resultsToProcess = db.query(
-      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, created_at
+      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, source_page_url, created_at
        FROM results WHERE job_id = ? AND status = 'needs_review'
        ORDER BY created_at`
     ).all(jobId) as Record<string, unknown>[];
@@ -553,7 +554,7 @@ export function jobsRoutes(db: Database): Hono {
     ).get(jobId) as Record<string, unknown>;
 
     const allResults = db.query(
-      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, created_at
+      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, source_page_url, created_at
        FROM results WHERE job_id = ? ORDER BY created_at`
     ).all(jobId) as Record<string, unknown>[];
 
@@ -612,7 +613,7 @@ export function jobsRoutes(db: Database): Hono {
     }
 
     const results = db.query(
-      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, created_at
+      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, source_page_url, created_at
        FROM results WHERE job_id = ? ORDER BY created_at`
     ).all(jobId) as Record<string, unknown>[];
 
@@ -676,6 +677,89 @@ export function jobsRoutes(db: Database): Hono {
     });
   });
 
+  // POST /api/jobs/:jobId/results/:resultId/regenerate — regenerate AI alt text for one image
+  router.post("/:jobId/results/:resultId/regenerate", async (c) => {
+    const userId = getUserId(c);
+    const jobId = c.req.param("jobId");
+    const resultId = c.req.param("resultId");
+
+    // Verify job ownership
+    const job = db.query(
+      `SELECT id FROM jobs WHERE id = ? AND user_id = ?`
+    ).get(jobId, userId) as Record<string, unknown> | undefined;
+
+    if (!job) {
+      return c.json({ error: "Job not found" }, 404);
+    }
+
+    // Load the result
+    const result = db.query(
+      `SELECT id, job_id, image_url, context_text FROM results WHERE id = ? AND job_id = ?`
+    ).get(resultId, jobId) as Record<string, unknown> | undefined;
+
+    if (!result) {
+      return c.json({ error: "Result not found" }, 404);
+    }
+
+    // Check user credits
+    const user = db.query("SELECT credits FROM users WHERE id = ?")
+      .get(userId) as { credits: number } | undefined;
+
+    if (!user) {
+      return c.json({ error: "User not found" }, 404);
+    }
+
+    if (user.credits < 1) {
+      return c.json({ error: "Insufficient credits. You need at least 1 credit to regenerate." }, 402);
+    }
+
+    // Get API key
+    let apiKey: string;
+    try {
+      apiKey = requireApiKey();
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 500);
+    }
+
+    // Deduct 1 credit
+    db.run("UPDATE users SET credits = credits - 1 WHERE id = ? AND credits > 0", [userId]);
+
+    // Call AI generation
+    let altText: string;
+    let status: string;
+    let charCount: number;
+
+    try {
+      const generated = await generateAltText(
+        result.image_url as string,
+        result.context_text as string | null,
+        apiKey
+      );
+      altText = generated.altText;
+      status = generated.status;
+      charCount = generated.charCount;
+    } catch (err) {
+      // Refund the credit on AI failure
+      db.run("UPDATE users SET credits = credits + 1 WHERE id = ?", [userId]);
+      return c.json({
+        error: `AI generation failed: ${err instanceof Error ? err.message : "Unknown error"}`,
+      }, 500);
+    }
+
+    // Update the result
+    db.run(
+      `UPDATE results SET alt_text = ?, char_count = ?, status = ? WHERE id = ?`,
+      [altText, charCount, status, resultId]
+    );
+
+    return c.json({
+      id: resultId,
+      alt_text: altText,
+      char_count: charCount,
+      status,
+    });
+  });
+
   // DELETE /api/jobs/:id — delete a pending job
   router.delete("/:id", async (c) => {
     const userId = getUserId(c);
@@ -721,7 +805,7 @@ export function jobsRoutes(db: Database): Hono {
 
     // Load results
     const results = db.query(
-      `SELECT id, job_id, image_url, alt_text, char_count, status
+      `SELECT id, job_id, image_url, alt_text, char_count, status, source_page_url
        FROM results WHERE job_id = ? ORDER BY created_at`
     ).all(jobId) as Record<string, unknown>[];
 
