@@ -230,11 +230,20 @@ export const api = {
     return handleResponse<{ id: string; alt_text: string; char_count: number; status: string }>(res);
   },
 
-  async getSkippedResults(jobId: string): Promise<{ skipped: SkippedResult[] }> {
-    const res = await fetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}/skipped`, {
+  async getSkippedResults(
+    jobId: string,
+    page?: number,
+    limit?: number
+  ): Promise<{ skipped: SkippedResult[]; total: number; page: number; limit: number }> {
+    const params = new URLSearchParams();
+    if (page !== undefined) params.set("page", String(page));
+    if (limit !== undefined) params.set("limit", String(limit));
+    const qs = params.toString();
+    const url = `${API_BASE}/jobs/${encodeURIComponent(jobId)}/skipped${qs ? `?${qs}` : ""}`;
+    const res = await fetch(url, {
       credentials: "include",
     });
-    return handleResponse<{ skipped: SkippedResult[] }>(res);
+    return handleResponse<{ skipped: SkippedResult[]; total: number; page: number; limit: number }>(res);
   },
 
   async generateSkipped(
