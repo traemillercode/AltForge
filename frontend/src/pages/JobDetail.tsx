@@ -976,6 +976,64 @@ export default function JobDetailPage() {
         </div>
       )}
 
+      {/* Job Summary Panel */}
+      <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Job Summary</h2>
+        <div className={`grid grid-cols-2 ${job.type === "crawl" ? "sm:grid-cols-4" : "sm:grid-cols-3"} gap-4`}>
+          {/* Total Images */}
+          <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Total Images</p>
+            <p className="mt-1 text-2xl font-bold text-gray-900">
+              {job.type === "crawl" ? job.total_images + skippedTotal : job.total_images}
+            </p>
+            <p className="mt-0.5 text-xs text-gray-400">found on {job.type === "crawl" ? "site" : "upload"}</p>
+          </div>
+
+          {/* Skipped (crawl jobs only) */}
+          {job.type === "crawl" ? (
+            <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
+              <p className="text-xs font-medium text-blue-600 uppercase tracking-wider">Skipped</p>
+              <p className="mt-1 text-2xl font-bold text-blue-700">{skippedTotal}</p>
+              <p className="mt-0.5 text-xs text-blue-400">had alt text already</p>
+            </div>
+          ) : (
+            <div className="bg-indigo-50 rounded-lg p-4 border border-indigo-100">
+              <p className="text-xs font-medium text-indigo-600 uppercase tracking-wider">Queued</p>
+              <p className="mt-1 text-2xl font-bold text-indigo-700">{job.total_images}</p>
+              <p className="mt-0.5 text-xs text-indigo-400">images to process</p>
+            </div>
+          )}
+
+          {/* Generated */}
+          <div className={`rounded-lg p-4 border ${results.length > 0 ? "bg-green-50 border-green-100" : "bg-gray-50 border-gray-100"}`}>
+            <p className={`text-xs font-medium uppercase tracking-wider ${results.length > 0 ? "text-green-600" : "text-gray-500"}`}>Generated</p>
+            <p className={`mt-1 text-2xl font-bold ${results.length > 0 ? "text-green-700" : "text-gray-900"}`}>{results.length}</p>
+            <p className={`mt-0.5 text-xs ${results.length > 0 ? "text-green-400" : "text-gray-400"}`}>
+              {isPending ? "awaiting processing" : isProcessing ? "processed so far" : "alt texts created"}
+            </p>
+          </div>
+
+          {/* Compliance */}
+          <div className={`rounded-lg p-4 border ${needsReviewCount > 0 ? "bg-amber-50 border-amber-100" : "bg-gray-50 border-gray-100"}`}>
+            <p className={`text-xs font-medium uppercase tracking-wider ${needsReviewCount > 0 ? "text-amber-600" : "text-gray-500"}`}>Compliance</p>
+            <p className="mt-1 text-2xl font-bold">
+              {results.length > 0 ? (
+                <>
+                  <span className="text-green-700">{compliantCount + decorativeCount}</span>
+                  <span className="text-gray-400"> / </span>
+                  <span className={needsReviewCount > 0 ? "text-red-600" : "text-gray-500"}>{needsReviewCount}</span>
+                </>
+              ) : (
+                <span className="text-gray-400">—</span>
+              )}
+            </p>
+            <p className="mt-0.5 text-xs text-gray-400">
+              {results.length > 0 ? "passes / needs review" : "no results yet"}
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Results table */}
       <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="px-4 sm:px-6 py-4 border-b border-gray-200 bg-gray-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
