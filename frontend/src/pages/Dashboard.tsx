@@ -189,9 +189,13 @@ export default function DashboardPage() {
                         {formatDate(job.created_at)}
                       </Link>
                     </td>
-                    <td className="px-4 sm:px-6 py-4 text-sm text-gray-900 max-w-[150px] sm:max-w-xs truncate">{job.source_filename || job.source_url || "—"}</td>
+                    <td className="px-4 sm:px-6 py-4 text-sm text-gray-900 max-w-[150px] sm:max-w-xs truncate" title={job.source_filename || job.source_url || ""}>{job.source_filename || job.source_url || "—"}</td>
                     <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-600 uppercase">{job.type}</td>
-                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">{job.total_images}</td>
+                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {job.status === "completed" && job.total_images === 0
+                        ? <span className="text-gray-400 italic">No images found</span>
+                        : job.total_images}
+                    </td>
                     <td className="px-4 sm:px-6 py-4 whitespace-nowrap"><StatusBadge status={job.status} /></td>
                     <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
                       {job.status === "pending" ? (
