@@ -497,6 +497,7 @@ export default function JobReportPage() {
                         <tr key={s.id}>
                           <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">{idx + 1}</td>
                           <td className="px-3 py-2 text-sm text-gray-900 max-w-[200px]">
+                            <ImageThumb url={s.image_url} alt={`Skipped image ${idx + 1}`} />
                             <a href={s.image_url} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:text-brand-800 break-all text-xs">
                               {truncateUrl(s.image_url)}
                             </a>
