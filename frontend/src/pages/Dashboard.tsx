@@ -23,8 +23,14 @@ export default function DashboardPage() {
             {user.credits}
           </p>
           <p className="mt-1 text-sm text-gray-500">
-            free credits remaining
+            credits remaining
           </p>
+          <Link
+            to="/pricing"
+            className="mt-3 inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-brand-600 rounded-lg hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-brand-500 transition-colors"
+          >
+            Buy more credits
+          </Link>
         </div>
 
         {/* Quick action card */}

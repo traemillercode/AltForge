@@ -25,6 +25,7 @@ function initializeSchema(database: Database): void {
       email TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
       credits INTEGER DEFAULT 25,
+      stripe_customer_id TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
@@ -57,8 +58,31 @@ function initializeSchema(database: Database): void {
     );
   `);
 
+  database.run(`
+      CREATE TABLE IF NOT EXISTS transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        stripe_reference TEXT,
+        amount INTEGER NOT NULL,
+        reason TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+
   database.run(`CREATE INDEX IF NOT EXISTS idx_jobs_user_id ON jobs(user_id);`);
   database.run(`CREATE INDEX IF NOT EXISTS idx_results_job_id ON results(job_id);`);
+  database.run(`CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);`);
+  database.run(`CREATE INDEX IF NOT EXISTS idx_transactions_stripe_ref ON transactions(stripe_reference);`);
+
+  // Migration: add stripe_customer_id to users table
+  const userColumns = database
+    .query(`PRAGMA table_info(users)`)
+    .all() as Array<{ name: string }>;
+  const hasStripeCustomerId = userColumns.some((col) => col.name === "stripe_customer_id");
+  if (!hasStripeCustomerId) {
+    database.run(`ALTER TABLE users ADD COLUMN stripe_customer_id TEXT;`);
+    console.log("[db] Migrated: added stripe_customer_id to users");
+  }
 
   // Migration: expand job type check constraint to include 'images'
   // SQLite doesn't support ALTER CHECK, so recreate the constraint via a new table
