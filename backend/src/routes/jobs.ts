@@ -1101,6 +1101,105 @@ export function jobsRoutes(db: Database): Hono {
     return c.json({ success: true });
   });
 
+  // GET /api/jobs/:id/report — report data for the job report page
+  router.get("/:id/report", (c) => {
+    const userId = getUserId(c);
+    const jobId = c.req.param("id");
+
+    // Verify job ownership
+    const job = db.query(
+      `SELECT id, type, status, total_images, processed_images,
+              source_url, source_filename, created_at, completed_at
+       FROM jobs WHERE id = ? AND user_id = ?`
+    ).get(jobId, userId) as Record<string, unknown> | undefined;
+
+    if (!job) {
+      return c.json({ error: "Job not found" }, 404);
+    }
+
+    // Load results
+    const results = db.query(
+      `SELECT id, job_id, image_url, alt_text, char_count, status, context_text, source_page_url, file_size, created_at
+       FROM results WHERE job_id = ? ORDER BY created_at`
+    ).all(jobId) as Record<string, unknown>[];
+
+    // Load skipped results for crawl jobs
+    let skipped: Record<string, unknown>[] = [];
+    if (job.type === "crawl") {
+      skipped = db.query(
+        `SELECT id, job_id, image_url, source_page_url, existing_alt_text, file_size, created_at
+         FROM skipped_results WHERE job_id = ? ORDER BY id`
+      ).all(jobId) as Record<string, unknown>[];
+    }
+
+    // Compute compliance breakdown
+    let compliant = 0;
+    let compliantLong = 0;
+    let needsReview = 0;
+    let decorative = 0;
+    let creditUsage = 0;
+
+    for (const r of results) {
+      const altText = (r.alt_text as string) ?? "";
+      const status = r.status as string;
+
+      if (altText !== "" && altText !== null) {
+        creditUsage++;
+      }
+
+      if (status === "decorative" || altText === "") {
+        decorative++;
+      } else if (status === "needs_review") {
+        needsReview++;
+      } else {
+        // compliant — check length for sub-categorization
+        const chars = altText.length;
+        if (chars > 125) {
+          compliantLong++;
+        } else {
+          compliant++;
+        }
+      }
+    }
+
+    // Total images including skipped for crawl jobs
+    const totalImages = job.type === "crawl"
+      ? ((job.total_images as number) + skipped.length)
+      : (job.total_images as number);
+
+    // Pass rate: (compliant + compliantLong + decorative) / total with results
+    const totalWithResults = compliant + compliantLong + decorative + needsReview;
+    const passRate = totalWithResults > 0
+      ? Math.round(((compliant + compliantLong + decorative) / totalWithResults) * 100)
+      : 0;
+
+    return c.json({
+      job: {
+        id: job.id,
+        type: job.type,
+        status: job.status,
+        total_images: job.total_images,
+        processed_images: job.processed_images,
+        source_url: job.source_url,
+        source_filename: job.source_filename,
+        created_at: job.created_at,
+        completed_at: job.completed_at,
+      },
+      totalImages,
+      results,
+      skipped,
+      creditUsage,
+      compliance: {
+        compliant,
+        compliant_long: compliantLong,
+        needs_review: needsReview,
+        decorative,
+        total: totalWithResults,
+        passRate,
+      },
+    });
+  });
+
   // GET /api/jobs/:id/export — export results as CSV or HTML
   router.get("/:id/export", (c) => {
     const userId = getUserId(c);
